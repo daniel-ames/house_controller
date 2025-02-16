@@ -16,11 +16,13 @@
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
 int sockfd;
+int connfd;
 FILE *ostream = NULL;
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
 {
+    close(connfd);
     close(sockfd);
     //logger_handle_sig();
     exit(0);
@@ -30,7 +32,6 @@ void handle_sig(int sig)
 
 int main ()
 {
-    int connfd;
     struct sockaddr_in serv_addr, cli_addr;
     socklen_t  clilen;
     uint32_t  peer_addr = 0;
