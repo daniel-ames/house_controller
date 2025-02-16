@@ -81,12 +81,12 @@ int main ()
         peer_addr = (uint32_t)cli_addr.sin_addr.s_addr;
         memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
         snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);
-        out(ostream, "Peer connected: %s\n", peer_ip_addr_str);
+        //out(ostream, "Peer connected: %s\n", peer_ip_addr_str);
         memset(buf, 0, MAX_BUFF_SZ);
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
             msg_len = strnlen(buf, MAX_BUFF_SZ);
-            out(ostream, "Msg: %s\n", buf);
+            out(ostream, "%s: %s\n", peer_ip_addr_str, buf);
         }
 
         close(connfd);
