@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <time.h>
 //#include <regex.h>
 #include <errno.h>
 
@@ -32,6 +33,9 @@ void handle_sig(int sig)
 
 int main ()
 {
+    time_t rawtime;
+    struct tm * timeinfo;
+
     struct sockaddr_in serv_addr, cli_addr;
     socklen_t  clilen;
     uint32_t  peer_addr = 0;
@@ -78,6 +82,8 @@ int main ()
             out(ostream, "bad response or something: %s\n", strerror(errno));
             break;
         }
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
         peer_addr = (uint32_t)cli_addr.sin_addr.s_addr;
         memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
         snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);
@@ -86,7 +92,7 @@ int main ()
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
             msg_len = strnlen(buf, MAX_BUFF_SZ);
-            out(ostream, "%s: %s\n", peer_ip_addr_str, buf);
+            out(ostream, "%s %s\n", asctime(timeinfo), buf);
         }
 
         close(connfd);
