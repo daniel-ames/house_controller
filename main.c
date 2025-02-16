@@ -45,6 +45,8 @@ int main ()
     char peer_ip_addr_str[IP_ADDRESS_SZ + 1];
 
     char buf[MAX_BUFF_SZ];
+    char *time_str;
+    int index = 0;
 
     // close the port cleanly when I ctrl+C this sumbitch
     signal(SIGINT, handle_sig);
@@ -84,15 +86,20 @@ int main ()
         }
         time(&rawtime);
         timeinfo = localtime(&rawtime);
+        time_str = asctime(timeinfo);
+        // kill the trailing \n from the stupid date-time string
+        index = 0;
+        while(time_str[index] != '\n') index++;
+        time_str[index] = 0;
+        
         peer_addr = (uint32_t)cli_addr.sin_addr.s_addr;
         memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
         snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);
-        //out(ostream, "Peer connected: %s\n", peer_ip_addr_str);
         memset(buf, 0, MAX_BUFF_SZ);
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
-            msg_len = strnlen(buf, MAX_BUFF_SZ);
-            out(ostream, "%s %s\n", asctime(timeinfo), buf);
+            //msg_len = strnlen(buf, MAX_BUFF_SZ);
+            out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
         }
 
         close(connfd);
