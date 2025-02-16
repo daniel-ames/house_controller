@@ -12,6 +12,7 @@
 #include "logger.h"
 
 #define LISTEN_PORT  27910
+#define MAX_BUFF_SZ  256
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
 int sockfd;
@@ -33,9 +34,12 @@ int main ()
     struct sockaddr_in serv_addr, cli_addr;
     socklen_t  clilen;
     uint32_t  peer_addr = 0;
+    int bytes_read, msg_len = 0;
 
     char ip_addr[IP_ADDRESS_SZ + 1];  // +1 for null
     char peer_ip_addr_str[IP_ADDRESS_SZ + 1];
+
+    char buf[MAX_BUFF_SZ];
 
     // close the port cleanly when I ctrl+C this sumbitch
     signal(SIGINT, handle_sig);
@@ -77,6 +81,13 @@ int main ()
         memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
         snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);
         out(ostream, "Peer connected: %s\n", peer_ip_addr_str);
+        memset(buf, 0, MAX_BUFF_SZ);
+        if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
+        {
+            msg_len = strnlen(buf, MAX_BUFF_SZ);
+            out(ostream, "Msg: %s\n", buf);
+        }
+
         close(connfd);
     }
 
