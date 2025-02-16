@@ -56,7 +56,7 @@ int main ()
 
     if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
     {
-        out("Failed to bind socket: %s\n", strerror(errno));
+        out(stderr, "Failed to bind socket: %s\n", strerror(errno));
         return 1;
     }
 
