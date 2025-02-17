@@ -91,7 +91,7 @@ int main ()
         index = 0;
         while(time_str[index] != '\n') index++;
         time_str[index] = 0;
-        
+
         peer_addr = (uint32_t)cli_addr.sin_addr.s_addr;
         memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
         snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);

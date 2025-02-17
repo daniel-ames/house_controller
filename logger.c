@@ -7,7 +7,7 @@
 
 #include "logger.h"
 
-#define LOG_FILE  "/opt/target-locator/log/target-locator.log"
+#define LOG_FILE  "/opt/house_controller/house_controller.log"
 
 FILE *fp = NULL;
 
