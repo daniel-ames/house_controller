@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 //#include <stdbool.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -9,6 +10,7 @@
 #include <time.h>
 //#include <regex.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "logger.h"
 
@@ -16,9 +18,13 @@
 #define MAX_BUFF_SZ  256
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
+int send_email();
+
 int sockfd;
 int connfd;
 FILE *ostream = NULL;
+volatile int counter = 0;
+volatile int session = 0;
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
@@ -29,12 +35,44 @@ void handle_sig(int sig)
     exit(0);
 }
 
+void* thread_func(void * ptr)
+{
+    int timeout = 10;
+    int prev_counter = counter;
+    printf("-------- start\n");
+    fflush(stdout);
+    while(timeout--)
+    {
+        sleep(1);
+        if(counter > prev_counter)
+          prev_counter = counter;
+        else {
+          session = 0;
+          break;
+        }
+    }
 
+    if (session) {
+      // pump is still on after 10 seconds. something might be wrong.
+      printf("\n-------- timeout\n");
+      session = 0;
+    }
+    else
+      printf("\n-------- end\n");
+    
+    fflush(stdout);
+    
+    counter = 0;
+}
 
 int main ()
 {
     time_t rawtime;
     struct tm * timeinfo;
+
+    int s;
+    pthread_attr_t attr;
+    pthread_t thread;
 
     struct sockaddr_in serv_addr, cli_addr;
     socklen_t  clilen;
@@ -84,6 +122,16 @@ int main ()
             out(ostream, "bad response or something: %s\n", strerror(errno));
             break;
         }
+        if (!session)
+        {
+            session = 1;
+            s = pthread_attr_init(&attr);
+            if(s == -1) printf("%d\n", __LINE__);
+            s = pthread_create(&thread, &attr, thread_func, NULL);
+            if(s == -1) printf("%d\n", __LINE__);
+            pthread_attr_destroy(&attr);
+        }
+        counter++;
         time(&rawtime);
         timeinfo = localtime(&rawtime);
         time_str = asctime(timeinfo);
