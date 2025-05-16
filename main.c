@@ -7,11 +7,12 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
-#include <time.h>
+//#include <time.h>
 //#include <regex.h>
 #include <errno.h>
 #include <pthread.h>
 
+#include "controller.h"
 #include "logger.h"
 
 #define LISTEN_PORT  27910
@@ -23,8 +24,10 @@ int send_email();
 int sockfd;
 int connfd;
 FILE *ostream = NULL;
-volatile int counter = 0;
+volatile int samples = 0;
 volatile int session = 0;
+
+sample_t *sample_head, *s_prev = NULL;
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
@@ -35,17 +38,52 @@ void handle_sig(int sig)
     exit(0);
 }
 
+void clean_list()
+{
+    sample_t *next, *s = sample_head;
+    
+    do {
+        next = s->next;
+        free(s);
+        s = next;
+    } while(s != NULL);
+}
+
+void show_list()
+{
+    sample_t *next, *s = sample_head;
+    struct tm * timeinfo;
+    char *time_str;
+    int index = 0;
+    
+    do {
+        // parse the time
+        timeinfo = localtime(&s->timestamp);
+        time_str = asctime(timeinfo);
+        // kill the trailing \n from the stupid date-time string
+        index = 0;
+        while(time_str[index] != '\n') index++;
+        time_str[index] = 0;
+
+        // Now show stuff
+        printf("list item [%d]: %s\n", s->ordinal, time_str);
+        
+        // on to the next
+        s = s->next;
+    } while(s != NULL);
+}
+
 void* thread_func(void * ptr)
 {
     int timeout = 10;
-    int prev_counter = counter;
+    int prev_counter = samples;
     printf("-------- start\n");
     fflush(stdout);
     while(timeout--)
     {
         sleep(1);
-        if(counter > prev_counter)
-          prev_counter = counter;
+        if(samples > prev_counter)
+          prev_counter = samples;
         else {
           session = 0;
           break;
@@ -57,12 +95,17 @@ void* thread_func(void * ptr)
       printf("\n-------- timeout\n");
       session = 0;
     }
-    else
+    else {
       printf("\n-------- end\n");
-    
+
+    }
+
+    show_list();
+
     fflush(stdout);
-    
-    counter = 0;
+    clean_list();
+    s_prev = NULL;
+    samples = 0;
 }
 
 int main ()
@@ -70,7 +113,7 @@ int main ()
     time_t rawtime;
     struct tm * timeinfo;
 
-    int s;
+    int res;
     pthread_attr_t attr;
     pthread_t thread;
 
@@ -78,6 +121,8 @@ int main ()
     socklen_t  clilen;
     uint32_t  peer_addr = 0;
     int bytes_read, msg_len = 0;
+
+    sample_t *s;
 
     char ip_addr[IP_ADDRESS_SZ + 1];  // +1 for null
     char peer_ip_addr_str[IP_ADDRESS_SZ + 1];
@@ -122,16 +167,7 @@ int main ()
             out(ostream, "bad response or something: %s\n", strerror(errno));
             break;
         }
-        if (!session)
-        {
-            session = 1;
-            s = pthread_attr_init(&attr);
-            if(s == -1) printf("%d\n", __LINE__);
-            s = pthread_create(&thread, &attr, thread_func, NULL);
-            if(s == -1) printf("%d\n", __LINE__);
-            pthread_attr_destroy(&attr);
-        }
-        counter++;
+        samples++;
         time(&rawtime);
         timeinfo = localtime(&rawtime);
         time_str = asctime(timeinfo);
@@ -146,8 +182,30 @@ int main ()
         memset(buf, 0, MAX_BUFF_SZ);
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
-            //msg_len = strnlen(buf, MAX_BUFF_SZ);
             out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
+            fflush(stdout);
+
+            s = malloc(sizeof(*s));
+            memset(s, 0, sizeof(*s));
+            if (!session)
+            {
+                sample_head = s;
+                session = 1;
+                res = pthread_attr_init(&attr);
+                if(res == -1) printf("%d\n", __LINE__);
+                res = pthread_create(&thread, &attr, thread_func, NULL);
+                if(res == -1) printf("%d\n", __LINE__);
+                pthread_attr_destroy(&attr);
+            }
+
+            if (s_prev != NULL) {
+              s_prev->next = s;
+            }
+            memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
+            s->ordinal = samples - 1;
+            s->next = NULL;
+            // TODO: set the amps
+            s_prev = s;
         }
 
         close(connfd);
