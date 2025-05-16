@@ -38,6 +38,25 @@ void handle_sig(int sig)
     exit(0);
 }
 
+// make the time look like: 3:45:24 PM
+void time_my_way(struct tm * time, char * out)
+{
+    int hour = 0;
+    char meridian[3] = {0};
+    if (time->tm_hour > 12) {
+        meridian[0] = 'P';
+        hour = time->tm_hour - 12;
+    }
+    else {
+        meridian[0] = 'A';
+        hour = time->tm_hour == 0 ? 12 : time->tm_hour;
+    }
+
+    meridian[1] = 'M';
+
+    sprintf(out, "%d:%d:%d %s", hour, time->tm_min, time->tm_sec, meridian);
+}
+
 void clean_list()
 {
     sample_t *next, *s = sample_head;
@@ -53,17 +72,13 @@ void show_list()
 {
     sample_t *next, *s = sample_head;
     struct tm * timeinfo;
-    char *time_str;
+    char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
     int index = 0;
     
     do {
         // parse the time
         timeinfo = localtime(&s->timestamp);
-        time_str = asctime(timeinfo);
-        // kill the trailing \n from the stupid date-time string
-        index = 0;
-        while(time_str[index] != '\n') index++;
-        time_str[index] = 0;
+        time_my_way(timeinfo, time_str);
 
         // Now show stuff
         printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
