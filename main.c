@@ -66,7 +66,7 @@ void show_list()
         time_str[index] = 0;
 
         // Now show stuff
-        printf("list item [%d]: %s\n", s->ordinal, time_str);
+        printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
         
         // on to the next
         s = s->next;
@@ -128,6 +128,7 @@ int main ()
     char peer_ip_addr_str[IP_ADDRESS_SZ + 1];
 
     char buf[MAX_BUFF_SZ];
+    char *p;
     char *time_str;
     int index = 0;
 
@@ -205,6 +206,9 @@ int main ()
             s->ordinal = samples - 1;
             s->next = NULL;
             // TODO: set the amps
+            p = strchr(buf, ':');
+            p++;
+            s->amps = strtof(p, NULL);
             s_prev = s;
         }
 
