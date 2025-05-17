@@ -68,30 +68,46 @@ void clean_list()
     } while(s != NULL);
 }
 
-void show_list()
+void compile_measurement(summary_t *summary)
 {
     sample_t *next, *s = sample_head;
     struct tm * timeinfo;
     char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
-    int index = 0;
+    int count = 0;
+    float min = 1000.0f, max = 0.0f, sum = 0.0f;
+
+    __u_long start_time = (__u_long)s->timestamp, end_time;
     
     do {
         // parse the time
         timeinfo = localtime(&s->timestamp);
         time_my_way(timeinfo, time_str);
 
-        // Now show stuff
+        // show it (optional)
         printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
+
+        if(s->amps > max) max = s->amps;
+        if(s->amps < min) min = s->amps;
+        sum += s->amps;
+        count++;
+        end_time = (__u_long)s->timestamp;
         
         // on to the next
         s = s->next;
     } while(s != NULL);
+
+    summary->min = min;
+    summary->max = max;
+    summary->samples = count;
+    summary->average = sum / (float)count;
+    summary->duration = end_time - start_time;
 }
 
 void* thread_func(void * ptr)
 {
     int timeout = 10;
     int prev_counter = samples;
+    summary_t summary;
     printf("-------- start\n");
     fflush(stdout);
     while(timeout--)
@@ -115,7 +131,14 @@ void* thread_func(void * ptr)
 
     }
 
-    show_list();
+    compile_measurement(&summary);
+
+    printf("Summary:\n");
+    printf("  min     : %f\n", summary.min);
+    printf("  max     : %f\n", summary.max);
+    printf("  average : %f\n", summary.average);
+    printf("  samples : %d\n", summary.samples);
+    printf("  duration: %lu\n\n", summary.duration);
 
     fflush(stdout);
     clean_list();
