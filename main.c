@@ -139,8 +139,21 @@ void* thread_func(void * ptr)
     printf("  average : %f\n", summary.average);
     printf("  samples : %d\n", summary.samples);
     printf("  duration: %lu\n\n", summary.duration);
-
     fflush(stdout);
+
+    // write the results out to a file
+    FILE *fp = fopen(MEASUREMENT_FILE, "w");
+    fprintf(fp, "Summary:\n");
+    fprintf(fp, "  min     : %f\n", summary.min);
+    fprintf(fp, "  max     : %f\n", summary.max);
+    fprintf(fp, "  average : %f\n", summary.average);
+    fprintf(fp, "  samples : %d\n", summary.samples);
+    fprintf(fp, "  duration: %lu\n\n", summary.duration);
+    fflush(fp);
+    fclose(fp);
+
+    send_email();
+
     clean_list();
     s_prev = NULL;
     samples = 0;

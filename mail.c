@@ -11,6 +11,7 @@
 #include <libesmtp.h>
 
 #include "private_auth.h"
+#include "controller.h"
 
 
 /*
@@ -52,7 +53,7 @@ int send_email() {
   smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
   smtp_set_server(session, "smtp.gmail.com:587");
 
-  FILE* fd = fopen("input.txt", "r");
+  FILE* fd = fopen(MEASUREMENT_FILE, "r");
   
   //smtp_set_message_fp(message, fd);
   smtp_set_messagecb (message, _smtp_message_fp_cb, fd);
