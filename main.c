@@ -38,6 +38,12 @@ void handle_sig(int sig)
     exit(0);
 }
 
+void handle_sigpipe()
+{
+    // ignore it
+    return;
+}
+
 // make the time look like: 3:45:24 PM
 void time_my_way(struct tm * time, char * out)
 {
@@ -128,7 +134,6 @@ void* thread_func(void * ptr)
     }
     else {
       printf("\n-------- end\n");
-
     }
 
     compile_measurement(&summary);
@@ -186,6 +191,7 @@ int main ()
     // close the port cleanly when I ctrl+C this sumbitch
     signal(SIGINT, handle_sig);
     signal(SIGTERM, handle_sig);
+    signal(SIGPIPE, handle_sigpipe);
 
     ostream = stdout;
 
