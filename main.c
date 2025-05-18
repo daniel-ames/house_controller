@@ -19,7 +19,7 @@
 #define MAX_BUFF_SZ  256
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
-int send_email();
+int send_email(char*);
 
 int sockfd;
 int connfd;
@@ -85,12 +85,12 @@ void compile_measurement(summary_t *summary)
     __u_long start_time = (__u_long)s->timestamp, end_time;
     
     do {
-        // parse the time
-        timeinfo = localtime(&s->timestamp);
-        time_my_way(timeinfo, time_str);
+        // // parse the time
+        // timeinfo = localtime(&s->timestamp);
+        // time_my_way(timeinfo, time_str);
 
-        // show it (optional)
-        printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
+        // // show it (optional)
+        // printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
 
         if(s->amps > max) max = s->amps;
         if(s->amps < min) min = s->amps;
@@ -114,7 +114,8 @@ void* thread_func(void * ptr)
     int timeout = 10;
     int prev_counter = samples;
     summary_t summary;
-    printf("-------- start\n");
+    char subject[256] = {0};
+    // printf("-------- start\n");
     fflush(stdout);
     while(timeout--)
     {
@@ -133,7 +134,7 @@ void* thread_func(void * ptr)
       session = 0;
     }
     else {
-      printf("\n-------- end\n");
+    //   printf("\n-------- end\n");
     }
 
     compile_measurement(&summary);
@@ -148,16 +149,26 @@ void* thread_func(void * ptr)
 
     // write the results out to a file
     FILE *fp = fopen(MEASUREMENT_FILE, "w");
-    fprintf(fp, "Summary:\n");
-    fprintf(fp, "  min     : %f\n", summary.min);
-    fprintf(fp, "  max     : %f\n", summary.max);
-    fprintf(fp, "  average : %f\n", summary.average);
-    fprintf(fp, "  samples : %d\n", summary.samples);
-    fprintf(fp, "  duration: %lu\n\n", summary.duration);
+    fprintf(fp, "Return-Path: <ameshousecontroller@gmail.com>:\r\n");
+    fprintf(fp, "MIME-Version: 1.0\r\n");
+    fprintf(fp, "Content-Type: text/plain;\r\n");
+    fprintf(fp, "  charset=iso-8859-1\r\n");
+    fprintf(fp, "Content-Transfer-Encoding: 7bit\r\n");
+    //fprintf(fp, "Subject: flush\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "Summary:\r\n");
+    fprintf(fp, "  min     : %f\r\n", summary.min);
+    fprintf(fp, "  max     : %f\r\n", summary.max);
+    fprintf(fp, "  average : %f\r\n", summary.average);
+    fprintf(fp, "  samples : %d\r\n", summary.samples);
+    fprintf(fp, "  duration: %lu\r\n", summary.duration);
     fflush(fp);
     fclose(fp);
 
-    send_email();
+    // Put the highlights in the subject line
+    sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%d", summary.max, summary.average, summary.duration);
+
+    send_email(subject);
 
     clean_list();
     s_prev = NULL;
