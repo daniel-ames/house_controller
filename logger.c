@@ -16,8 +16,8 @@ static void init_logger()
 {
     int ret = 0;
     fp = fopen(LOG_FILE, "a");
-    if (fp == -1)
-        out(stderr, "No log file \"%s\", and I couldn't create one either! Error: %s\n", LOG_FILE, strerror(errno));
+    if (fp == NULL)
+        fprintf(stderr, "No log file \"%s\", and I couldn't create one either! Error: %s\n", LOG_FILE, strerror(errno));
 }
 
 
@@ -33,8 +33,8 @@ void out(FILE *stream, char *str, ...)
     va_list args_for_log;
     va_list args_for_syslog;
 
-    if (fp == NULL)
-        init_logger();
+    // if (fp == NULL)
+    //     init_logger();
 
     if (stream != NULL)
     {
@@ -48,11 +48,11 @@ void out(FILE *stream, char *str, ...)
     va_start(args_for_syslog, str);
     vsyslog(LOG_USER | LOG_ERR, str, args_for_syslog);
 
-    // Write to our own persistent log file
-    if (fp != NULL && fp != -1)
-    {
-        va_start(args_for_log, str);
-        vfprintf(fp, str, args_for_log);
-        fflush(fp);
-    }
+    // // Write to our own persistent log file
+    // if (fp != NULL && fp != NULL)
+    // {
+    //     va_start(args_for_log, str);
+    //     vfprintf(fp, str, args_for_log);
+    //     fflush(fp);
+    // }
 }
