@@ -1,14 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-//#include <stdbool.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
-//#include <time.h>
-//#include <regex.h>
 #include <errno.h>
 #include <pthread.h>
 
@@ -19,7 +16,6 @@
 #define MAX_BUFF_SZ  256
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
-int send_email(char*);
 
 int sockfd;
 int connfd;
@@ -109,6 +105,7 @@ void compile_measurement(summary_t *summary)
     summary->duration = end_time - start_time;
 }
 
+
 void* thread_func(void * ptr)
 {
     int timeout = 10;
@@ -147,9 +144,15 @@ void* thread_func(void * ptr)
     printf("  duration: %lu\n\n", summary.duration);
     fflush(stdout);
 
+    // Put the highlights in the subject line
+    sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
+
     // write the results out to a file
     FILE *fp = fopen(MEASUREMENT_FILE, "w");
-    fprintf(fp, "Return-Path: <ameshousecontroller@gmail.com>:\r\n");
+    fprintf(fp, "To: danieladamames@gmail.com\r\n");
+    fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
+    fprintf(fp, "Subject: %s\r\n", subject);
+    //fprintf(fp, "Return-Path: <ameshousecontroller@gmail.com>:\r\n");
     fprintf(fp, "MIME-Version: 1.0\r\n");
     fprintf(fp, "Content-Type: text/plain;\r\n");
     fprintf(fp, "  charset=iso-8859-1\r\n");
@@ -165,10 +168,7 @@ void* thread_func(void * ptr)
     fflush(fp);
     fclose(fp);
 
-    // Put the highlights in the subject line
-    sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%d", summary.max, summary.average, summary.duration);
-
-    send_email(subject);
+    system("sendmail -t <" MEASUREMENT_FILE);
 
     clean_list();
     s_prev = NULL;
