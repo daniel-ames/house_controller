@@ -21,3 +21,4 @@ As of this writing (May 24, 2025), house controller only collects data from sewa
 TODO:
 -make it a real daemon, not just a user prog that sits open on the terminal
 -start connecting more devices. I still wanna control the makeup air damper from all fart fans in the house
+-add graphs to notifications
