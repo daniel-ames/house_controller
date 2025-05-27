@@ -124,7 +124,7 @@ void* thread_func(void * ptr)
     while(time_str[index] != '\n') index++;
     time_str[index] = 0;
 
-    out(ostream, "[%s] Flush started\n", time_str);
+    out(ostream, "[%s] Flush started", time_str);
     while(timeout--)
     {
         sleep(1);
@@ -147,7 +147,7 @@ void* thread_func(void * ptr)
 
     compile_measurement(&summary);
 
-    out(ostream, "Summary:\n");
+    out(ostream, "\nSummary:\n");
     out(ostream, "  min     : %f\n", summary.min);
     out(ostream, "  max     : %f\n", summary.max);
     out(ostream, "  average : %f\n", summary.average);
@@ -273,7 +273,6 @@ int main ()
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
             //out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
-            fflush(stdout);
 
             s = malloc(sizeof(*s));
             memset(s, 0, sizeof(*s));
@@ -299,6 +298,8 @@ int main ()
             p++;
             s->amps = strtof(p, NULL);
             s_prev = s;
+            out(ostream, ".");
+            fflush(stdout);
         }
 
         close(connfd);
