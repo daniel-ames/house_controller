@@ -17,8 +17,10 @@ Then manually go to https://myaccount.google.com/apppasswords to create the app 
 
 As of this writing (May 24, 2025), house controller only collects data from sewage_pump. See that repo for the sketch.
 
+For the graphing to work, you need gnuplot and unix2dos (which is in the dos2unix package).
+A note about pacman on arch - it gave me a hassle cuz it couldn't find some dependencies for gnuplot. Long story short, it was looking for a package that was deprecated and had been pulled from the mirror. Run "pacman -Syu" to make it fetch the latest db. That fixed the broken dependency and allowed me to install gnuplot.
 
 TODO:
 -make it a real daemon, not just a user prog that sits open on the terminal
 -start connecting more devices. I still wanna control the makeup air damper from all fart fans in the house
--add graphs to notifications
+-add graphs to notifications - DONE!
