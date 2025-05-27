@@ -102,12 +102,23 @@ void compile_measurement(summary_t *summary)
 
 void* thread_func(void * ptr)
 {
+    time_t rawtime;
+    struct tm * timeinfo;
     int timeout = 10;
     int prev_counter = samples;
     summary_t summary;
     char subject[256] = {0};
-    // printf("-------- start\n");
-    fflush(stdout);
+    char *time_str;
+    int index = 0;
+    
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    time_str = asctime(timeinfo);
+    // kill the trailing \n from the stupid date-time string
+    while(time_str[index] != '\n') index++;
+    time_str[index] = 0;
+
+    out(ostream, "[%s] Flush started\n", time_str);
     while(timeout--)
     {
         sleep(1);
@@ -130,13 +141,12 @@ void* thread_func(void * ptr)
 
     compile_measurement(&summary);
 
-    printf("Summary:\n");
-    printf("  min     : %f\n", summary.min);
-    printf("  max     : %f\n", summary.max);
-    printf("  average : %f\n", summary.average);
-    printf("  samples : %d\n", summary.samples);
-    printf("  duration: %lu\n\n", summary.duration);
-    fflush(stdout);
+    out(ostream, "Summary:\n");
+    out(ostream, "  min     : %f\n", summary.min);
+    out(ostream, "  max     : %f\n", summary.max);
+    out(ostream, "  average : %f\n", summary.average);
+    out(ostream, "  samples : %d\n", summary.samples);
+    out(ostream, "  duration: %lu\n\n", summary.duration);
 
     // Put the highlights in the subject line
     sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
@@ -244,7 +254,7 @@ int main ()
         memset(buf, 0, MAX_BUFF_SZ);
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
-            out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
+            //out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
             fflush(stdout);
 
             s = malloc(sizeof(*s));
