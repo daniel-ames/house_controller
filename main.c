@@ -73,7 +73,9 @@ void compile_measurement(summary_t *summary)
     float min = 1000.0f, max = 0.0f, sum = 0.0f;
 
     __u_long start_time = (__u_long)s->timestamp, end_time;
-    
+
+    FILE *fp = fopen(PLOT_FILE, "w");
+
     do {
         // // parse the time
         // timeinfo = localtime(&s->timestamp);
@@ -87,10 +89,13 @@ void compile_measurement(summary_t *summary)
         sum += s->amps;
         count++;
         end_time = (__u_long)s->timestamp;
-        
+        fprintf(fp, "%d %.1f\n", count, s->amps);
         // on to the next
         s = s->next;
     } while(s != NULL);
+
+    fflush(fp);
+    fclose(fp);
 
     summary->min = min;
     summary->max = max;
