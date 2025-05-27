@@ -90,6 +90,7 @@ void compile_measurement(summary_t *summary)
         count++;
         end_time = (__u_long)s->timestamp;
         fprintf(fp, "%d %.1f\n", count, s->amps);
+
         // on to the next
         s = s->next;
     } while(s != NULL);
@@ -161,23 +162,35 @@ void* thread_func(void * ptr)
     fprintf(fp, "To: danieladamames@gmail.com\r\n");
     fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
     fprintf(fp, "Subject: %s\r\n", subject);
-    //fprintf(fp, "Return-Path: <ameshousecontroller@gmail.com>:\r\n");
     fprintf(fp, "MIME-Version: 1.0\r\n");
-    fprintf(fp, "Content-Type: text/plain;\r\n");
-    fprintf(fp, "  charset=iso-8859-1\r\n");
-    fprintf(fp, "Content-Transfer-Encoding: 7bit\r\n");
-    //fprintf(fp, "Subject: flush\r\n");
+    fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
     fprintf(fp, "\r\n");
+    fprintf(fp, "This is a multipart message in MIME format.\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "--xxxx38th parallel\r\n");
+    fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
     fprintf(fp, "Summary:\r\n");
     fprintf(fp, "  min     : %f\r\n", summary.min);
     fprintf(fp, "  max     : %f\r\n", summary.max);
     fprintf(fp, "  average : %f\r\n", summary.average);
     fprintf(fp, "  samples : %d\r\n", summary.samples);
     fprintf(fp, "  duration: %lu\r\n", summary.duration);
+    fprintf(fp, "</p>\r\n");
+    fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "--xxxx38th parallel\r\n");
+    fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
+    fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
+    fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
+    fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
+    fprintf(fp, "Content-ID: <foo_bar>\r\n");
+    fprintf(fp, "\r\n");
     fflush(fp);
     fclose(fp);
 
-    system("sendmail -t <" MEASUREMENT_FILE);
+    system("./sendit.sh");
 
     clean_list();
     s_prev = NULL;
