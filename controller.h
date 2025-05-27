@@ -1,6 +1,7 @@
 #include <time.h>
 
 #define MEASUREMENT_FILE "measurement.txt"
+#define PLOT_FILE "plots.dat"
 
 typedef struct sample_t {
   float amps;

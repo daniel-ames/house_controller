@@ -73,7 +73,9 @@ void compile_measurement(summary_t *summary)
     float min = 1000.0f, max = 0.0f, sum = 0.0f;
 
     __u_long start_time = (__u_long)s->timestamp, end_time;
-    
+
+    FILE *fp = fopen(PLOT_FILE, "w");
+
     do {
         // // parse the time
         // timeinfo = localtime(&s->timestamp);
@@ -87,10 +89,14 @@ void compile_measurement(summary_t *summary)
         sum += s->amps;
         count++;
         end_time = (__u_long)s->timestamp;
-        
+        fprintf(fp, "%d %.1f\n", count, s->amps);
+
         // on to the next
         s = s->next;
     } while(s != NULL);
+
+    fflush(fp);
+    fclose(fp);
 
     summary->min = min;
     summary->max = max;
@@ -102,12 +108,23 @@ void compile_measurement(summary_t *summary)
 
 void* thread_func(void * ptr)
 {
+    time_t rawtime;
+    struct tm * timeinfo;
     int timeout = 10;
     int prev_counter = samples;
     summary_t summary;
     char subject[256] = {0};
-    // printf("-------- start\n");
-    fflush(stdout);
+    char *time_str;
+    int index = 0;
+    
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    time_str = asctime(timeinfo);
+    // kill the trailing \n from the stupid date-time string
+    while(time_str[index] != '\n') index++;
+    time_str[index] = 0;
+
+    out(ostream, "[%s] Flush started", time_str);
     while(timeout--)
     {
         sleep(1);
@@ -130,13 +147,12 @@ void* thread_func(void * ptr)
 
     compile_measurement(&summary);
 
-    printf("Summary:\n");
-    printf("  min     : %f\n", summary.min);
-    printf("  max     : %f\n", summary.max);
-    printf("  average : %f\n", summary.average);
-    printf("  samples : %d\n", summary.samples);
-    printf("  duration: %lu\n\n", summary.duration);
-    fflush(stdout);
+    out(ostream, "\nSummary:\n");
+    out(ostream, "  min     : %f\n", summary.min);
+    out(ostream, "  max     : %f\n", summary.max);
+    out(ostream, "  average : %f\n", summary.average);
+    out(ostream, "  samples : %d\n", summary.samples);
+    out(ostream, "  duration: %lu\n\n", summary.duration);
 
     // Put the highlights in the subject line
     sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
@@ -146,23 +162,35 @@ void* thread_func(void * ptr)
     fprintf(fp, "To: danieladamames@gmail.com\r\n");
     fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
     fprintf(fp, "Subject: %s\r\n", subject);
-    //fprintf(fp, "Return-Path: <ameshousecontroller@gmail.com>:\r\n");
     fprintf(fp, "MIME-Version: 1.0\r\n");
-    fprintf(fp, "Content-Type: text/plain;\r\n");
-    fprintf(fp, "  charset=iso-8859-1\r\n");
-    fprintf(fp, "Content-Transfer-Encoding: 7bit\r\n");
-    //fprintf(fp, "Subject: flush\r\n");
+    fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
     fprintf(fp, "\r\n");
+    fprintf(fp, "This is a multipart message in MIME format.\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "--xxxx38th parallel\r\n");
+    fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
     fprintf(fp, "Summary:\r\n");
     fprintf(fp, "  min     : %f\r\n", summary.min);
     fprintf(fp, "  max     : %f\r\n", summary.max);
     fprintf(fp, "  average : %f\r\n", summary.average);
     fprintf(fp, "  samples : %d\r\n", summary.samples);
     fprintf(fp, "  duration: %lu\r\n", summary.duration);
+    fprintf(fp, "</p>\r\n");
+    fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
+    fprintf(fp, "\r\n");
+    fprintf(fp, "--xxxx38th parallel\r\n");
+    fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
+    fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
+    fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
+    fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
+    fprintf(fp, "Content-ID: <foo_bar>\r\n");
+    fprintf(fp, "\r\n");
     fflush(fp);
     fclose(fp);
 
-    system("sendmail -t <" MEASUREMENT_FILE);
+    system("./sendit.sh");
 
     clean_list();
     s_prev = NULL;
@@ -244,8 +272,7 @@ int main ()
         memset(buf, 0, MAX_BUFF_SZ);
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
-            out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
-            fflush(stdout);
+            //out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
 
             s = malloc(sizeof(*s));
             memset(s, 0, sizeof(*s));
@@ -271,6 +298,8 @@ int main ()
             p++;
             s->amps = strtof(p, NULL);
             s_prev = s;
+            out(ostream, ".");
+            fflush(stdout);
         }
 
         close(connfd);
