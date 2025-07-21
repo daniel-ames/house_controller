@@ -178,12 +178,7 @@ void* thread_func(void * ptr)
     fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
     fprintf(fp, "\r\n");
     fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
-    fprintf(fp, "Summary:\r\n");
-    fprintf(fp, "  min     : %f\r\n", summary.min);
-    fprintf(fp, "  max     : %f\r\n", summary.max);
-    fprintf(fp, "  average : %f\r\n", summary.average);
-    fprintf(fp, "  samples : %d\r\n", summary.samples);
-    fprintf(fp, "  duration: %lu\r\n", summary.duration);
+    fprintf(fp, "max/average/samples/duration: %f/%f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
     fprintf(fp, "</p>\r\n");
     fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
     fprintf(fp, "\r\n");
