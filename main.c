@@ -22,6 +22,7 @@ int connfd;
 FILE *ostream = NULL;
 volatile int samples = 0;
 volatile int session = 0;
+volatile int thread_working = 0;
 
 sample_t *sample_head, *s_prev = NULL;
 
@@ -136,6 +137,12 @@ void* thread_func(void * ptr)
         }
     }
 
+    // fix: power blips cause the esp32 to send like one packet, then time-out, then send another
+    // while this thread is still buttoning things up. The parent thread then starts trying to use
+    // the linked-list, often while this child is trying to deallocate it. Crash!
+    // Use thread_working to tell the parent to hold it's dadgum horses.
+    thread_working = 1;
+
     if (session) {
       // pump is still on after 10 seconds. something might be wrong.
       printf("\n-------- timeout\n");
@@ -195,6 +202,12 @@ void* thread_func(void * ptr)
     clean_list();
     s_prev = NULL;
     samples = 0;
+
+    thread_working = 0;
+
+    // This function must return a void* to match the signture for pthread_create().
+    // Return null so gcc doesn't complain.
+    return (void*)0;
 }
 
 int main ()
@@ -272,7 +285,9 @@ int main ()
         memset(buf, 0, MAX_BUFF_SZ);
         if ((bytes_read = read(connfd, buf, MAX_BUFF_SZ)) > 0)
         {
-            //out(ostream, "%s, %s, %s\n", time_str, peer_ip_addr_str, buf);
+            if (thread_working)
+                // The child is still working. Just toss the sample.
+                continue;
 
             s = malloc(sizeof(*s));
             memset(s, 0, sizeof(*s));
