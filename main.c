@@ -288,6 +288,7 @@ int main ()
             memset(s, 0, sizeof(*s));
             if (!session)
             {
+                out(ostream, "From %s\n", peer_ip_addr_str);
                 sample_head = s;
                 session = 1;
                 res = pthread_attr_init(&attr);
