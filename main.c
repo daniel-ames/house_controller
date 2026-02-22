@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
@@ -15,7 +16,6 @@
 #include "logger.h"
 
 #define LISTEN_PORT  27910
-#define MAX_BUFF_SZ  256
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
 #define umin(x,y) (((uint64_t)(x) < (uint64_t)(y)) ? (x) : (y))
@@ -29,6 +29,8 @@ volatile int session = 0;
 volatile int thread_working = 0;
 
 sample_t *sample_head, *s_prev = NULL;
+
+void dispatch(const char *msg, uint length, char *peer_ip_address);
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
@@ -220,7 +222,7 @@ int main ()
 
     struct sockaddr_in serv_addr, cli_addr;
     socklen_t  clilen;
-    uint32_t  peer_addr = 0;
+    // uint32_t  peer_addr = 0;
     struct timeval sock_timeout_val = {.tv_sec = 1, .tv_usec = 0};
     int bytes_read, msg_len = 0;
 
@@ -330,7 +332,7 @@ int main ()
 
         close(connfd);
 
-        if(healthy_sample) dispatch(msg);
+        if(healthy_sample) dispatch(msg, msg_len, peer_ip_addr_str);
 #if 0
         samples++;
 

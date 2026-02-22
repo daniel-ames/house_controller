@@ -14,11 +14,94 @@
 #include "controller.h"
 #include "logger.h"
 
+#define DEVICE_TOKEN_LEN  4   // "dev="
+#define AMPS_TOKEN_LEN    5   // "amps="
 
-void dispatch(const char *msg)
+static key_value_t *kvp, *kvp_head, *kvp_prev;
+
+static void make_kvp(value_type_e type, char *str)
+{
+  kvp = malloc(sizeof(*kvp));
+  kvp->key = type;
+  switch(type) {
+    case device_type:
+      kvp->value.u32 = strtoul(str, NULL, 10);
+      break;
+    case amps_type:
+      kvp->value.dbl = strtod(str, NULL);
+      break;
+  }
+
+  if(kvp_prev) kvp_prev->next = kvp;
+  else kvp_head = kvp;
+  kvp_prev = kvp;
+}
+
+static void msg_is_malformed(const char *msg, char *peer_ip_address)
+{
+  out(stderr, "Discarding malformed message from peer: %s\n", peer_ip_address);
+  out(stderr, "  \"%s\"\n", msg);
+}
+
+void dispatch(const char *msg, uint length, char *peer_ip_address)
 {
   // incoming message.
   // Alls we know about this message at this point is that it's within size limitations (it's not a runaway message),
   // and that it's terminated with a newline. That's it.
+  // All we care about right now is the device type, but go ahead and do the text parsing here, once.
+  device_id_e dev_id = unknown_d;
+  
+  // Work with a copy of msg so I can use strtok()
+  char *cursor, *p = malloc(length);
+  memcpy(p, msg, length);
+
+  cursor = strtok(p, " ");
+  do {
+    if(strncmp(cursor, "dev=", DEVICE_TOKEN_LEN)) {
+      // device id
+      if(!cursor[DEVICE_TOKEN_LEN]) {
+        // value is blank. this should never happen
+        msg_is_malformed(msg, peer_ip_address);
+        break;
+      }
+      make_kvp(device_type, &cursor[DEVICE_TOKEN_LEN]);
+      // Intercept this one. We need to know what device this is so we know
+      // what handler to call.
+      dev_id = kvp_prev->value.u32;
+      continue;
+    }
+
+    if(strncmp(cursor, "amps=", AMPS_TOKEN_LEN)) {
+      // amps
+      if(!cursor[AMPS_TOKEN_LEN]) {
+        // value is blank. this should never happen
+        msg_is_malformed(msg, peer_ip_address);
+        break;
+      }
+      make_kvp(amps_type, &cursor[AMPS_TOKEN_LEN]);
+    }
+
+  } while( (cursor = strtok(NULL, " ")) );
+
+  // We now have a linked list of key-value pairs.
+  // Pass it to the appropriate handler.
+  // It is the handler's responsibility to free the linked list.
+  switch(dev_id) {
+    case sewage_pump_d:
+      // sewage_pump_handler()
+      break;
+    case well_house_d:
+      // well_house_handler()
+      break;
+    case driveway_d:
+      // driveway_handler()
+      break;
+    case generator_d:
+      // generator_handler()
+      break;
+    case unknown_d:
+      // error path...
+      break;
+  }
 
 }
