@@ -17,11 +17,14 @@
 #define DEVICE_TOKEN_LEN  4   // "dev="
 #define AMPS_TOKEN_LEN    5   // "amps="
 
+void sewage_pump_handler(key_value_t *kvp);
+
 static key_value_t *kvp, *kvp_head, *kvp_prev;
 
-static void make_kvp(value_type_e type, char *str)
+static void make_kvp(key_type_e type, char *str)
 {
   kvp = malloc(sizeof(*kvp));
+  kvp->next = NULL;
   kvp->key = type;
   switch(type) {
     case device_type:
@@ -50,14 +53,16 @@ void dispatch(const char *msg, uint length, char *peer_ip_address)
   // and that it's terminated with a newline. That's it.
   // All we care about right now is the device type, but go ahead and do the text parsing here, once.
   device_id_e dev_id = unknown_d;
-  
+  kvp = kvp_head = kvp_prev = NULL;
+
   // Work with a copy of msg so I can use strtok()
-  char *cursor, *p = malloc(length);
+  char *cursor, *p = malloc(length + 1);
+  p[length] = 0;
   memcpy(p, msg, length);
 
   cursor = strtok(p, " ");
   do {
-    if(strncmp(cursor, "dev=", DEVICE_TOKEN_LEN)) {
+    if(!strncmp(cursor, "dev=", DEVICE_TOKEN_LEN)) {
       // device id
       if(!cursor[DEVICE_TOKEN_LEN]) {
         // value is blank. this should never happen
@@ -71,7 +76,7 @@ void dispatch(const char *msg, uint length, char *peer_ip_address)
       continue;
     }
 
-    if(strncmp(cursor, "amps=", AMPS_TOKEN_LEN)) {
+    if(!strncmp(cursor, "amps=", AMPS_TOKEN_LEN)) {
       // amps
       if(!cursor[AMPS_TOKEN_LEN]) {
         // value is blank. this should never happen
@@ -88,7 +93,7 @@ void dispatch(const char *msg, uint length, char *peer_ip_address)
   // It is the handler's responsibility to free the linked list.
   switch(dev_id) {
     case sewage_pump_d:
-      // sewage_pump_handler()
+      sewage_pump_handler(kvp_head);
       break;
     case well_house_d:
       // well_house_handler()
