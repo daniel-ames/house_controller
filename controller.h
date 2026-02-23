@@ -24,10 +24,10 @@ typedef enum {
   ms_type,
   seconds_type,
   string_type
-} value_type_e;
+} key_type_e;
 
 typedef struct key_value {
-  value_type_e key;
+  key_type_e key;
   union {
     uint16_t u16;
     uint32_t u32;
