@@ -1,5 +1,5 @@
 
-typedef void (*handler_callback_t)(void *ctx);
+typedef void* (*handler_callback_t)(void *ctx);
 
 typedef struct session {
   uint32_t id;
