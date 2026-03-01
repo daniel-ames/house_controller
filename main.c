@@ -213,169 +213,124 @@ void* thread_func(void * ptr)
 
 int main ()
 {
-    time_t rawtime;
-    struct tm * timeinfo;
+  time_t rawtime;
+  struct tm * timeinfo;
 
-    int res;
-    pthread_attr_t attr;
-    pthread_t thread;
+  int res;
+  pthread_attr_t attr;
+  pthread_t thread;
 
-    struct sockaddr_in serv_addr, cli_addr;
-    socklen_t  clilen;
-    // uint32_t  peer_addr = 0;
-    struct timeval sock_timeout_val = {.tv_sec = 1, .tv_usec = 0};
-    int bytes_read, msg_len = 0;
+  struct sockaddr_in serv_addr, cli_addr;
+  socklen_t  clilen;
+  // uint32_t  peer_addr = 0;
+  struct timeval sock_timeout_val = {.tv_sec = 1, .tv_usec = 0};
+  int bytes_read, msg_len = 0;
 
-    sample_t *s;
-    bool healthy_sample = false;
+  sample_t *s;
+  bool healthy_sample = false;
 
-    char ip_addr[IP_ADDRESS_SZ + 1];  // +1 for null
-    char peer_ip_addr_str[IP_ADDRESS_SZ + 1];
+  char ip_addr[IP_ADDRESS_SZ + 1];  // +1 for null
+  char peer_ip_addr_str[IP_ADDRESS_SZ + 1];
 
-    char rawbuf[MAX_BUFF_SZ];
-    char msg[MAX_BUFF_SZ];
-    char *p,
-         *end_of_msg,
-         *time_str;
-    uint space_left = 0,
-         bytes_to_grab = 0,
-         index = 0;
-
-    // close the port cleanly when I ctrl+C this sumbitch
-    signal(SIGINT, handle_sig);
-    signal(SIGTERM, handle_sig);
-
-    ostream = stdout;
-
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-    {
-        out(ostream, "Failed to create socket: %s\n", strerror(errno));
-        return 1;
-    }
-
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serv_addr.sin_port = htons(LISTEN_PORT);
-
-    if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        out(stderr, "Failed to bind socket: %s\n", strerror(errno));
-        return 1;
-    }
-
-    listen(sockfd, 3);
-
-    out(ostream, "listening on port %d\n", LISTEN_PORT);
-
-    while(1)
-    {
-        clilen = sizeof(cli_addr);
-        msg_len = 0;
-        healthy_sample = false;
-        memset(msg, 0, sizeof(msg));
-
-        connfd = accept(sockfd, (struct sockaddr*)&cli_addr, &clilen);
-        if (connfd < 0) {
-            out(stderr, "bad response or something: %s\n", strerror(errno));
-            // TODO: don't kill the daemon just because of one bad connection
-            break;
-        }
-        setsockopt(connfd, SOL_SOCKET, SO_RCVTIMEO, &sock_timeout_val, sizeof(sock_timeout_val));
-
-        // get the remote peer (useful for debug)
-        //peer_addr = (uint32_t)cli_addr.sin_addr.s_addr;
-        memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
-        inet_ntop(AF_INET, &cli_addr.sin_addr, peer_ip_addr_str, sizeof(peer_ip_addr_str));
-        //snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);
-
-        do {
-          bytes_read = read(connfd, rawbuf, MAX_BUFF_SZ);
-          // parse
-          if(bytes_read > 0) {
-            // how much sapce is left in the buffer?
-            space_left = sizeof(msg) - msg_len - 1;
-
-            // grab the whole buffer if we have room, else, just grab however much we have room for
-            bytes_to_grab = (uint) umin(space_left, bytes_read);
-
-            memcpy(&msg[msg_len], rawbuf, bytes_to_grab);
-            msg_len += bytes_to_grab;
-            end_of_msg = strchr(msg, '\n');
-            if (end_of_msg) {
-              // Message is healthy
-              healthy_sample = true;
-              break;
-            }
-            if (space_left == 0) {
-              msg[sizeof(msg) - 1] = 0;
-              out(stderr, "message too long from peer: %s\n", peer_ip_addr_str);
-              out(stderr, "message: \"%s\"\n", msg);
-              break;
-            }
-          } else if (bytes_read == 0) {
-            // connection closed by remote peer. I think.
-            break;
-          } else {
-            // socket error
-            if (errno == EINTR) continue;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-              out(stderr, "timed-out waiting for newline from peer: %s\n", peer_ip_addr_str);
-              out(stderr, "  incomplete message: \"%s\"\n", msg);
-            } else {
-              out(stderr, "read error from peer: %s\n", peer_ip_addr_str);
-              perror("  errno:");
-            }
-            break;
-          }
-        } while(1);
-
-        close(connfd);
-
-        if(healthy_sample) dispatch(msg, msg_len, peer_ip_addr_str);
-#if 0
-        samples++;
-
-        // get time
-        time(&rawtime);
-        timeinfo = localtime(&rawtime);
-        time_str = asctime(timeinfo);
-        // kill the trailing \n from the stupid date-time string
+  char rawbuf[MAX_BUFF_SZ];
+  char msg[MAX_BUFF_SZ];
+  char *p,
+        *end_of_msg,
+        *time_str;
+  uint space_left = 0,
+        bytes_to_grab = 0,
         index = 0;
-        while(time_str[index] != '\n') index++;
-        time_str[index] = 0;
 
-        if (thread_working)
-            // The child is still working. Just toss the sample.
-            continue;
+  // close the port cleanly when I ctrl+C this sumbitch
+  signal(SIGINT, handle_sig);
+  signal(SIGTERM, handle_sig);
 
-        s = malloc(sizeof(*s));
-        memset(s, 0, sizeof(*s));
-        if (!session) {
-            out(ostream, "From %s\n", peer_ip_addr_str);
-            sample_head = s;
-            session = 1;
-            res = pthread_attr_init(&attr);
-            if(res == -1) printf("%d\n", __LINE__);
-            res = pthread_create(&thread, &attr, thread_func, NULL);
-            if(res == -1) printf("%d\n", __LINE__);
-            pthread_attr_destroy(&attr);
-        }
+  ostream = stdout;
 
-        if (s_prev != NULL) {
-          s_prev->next = s;
-        }
-        memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
-        s->ordinal = samples - 1;
-        s->next = NULL;
-        // TODO: set the amps
-        p = strchr(msg, ':');
-        p++;
-        s->amps = strtof(p, NULL);
-        s_prev = s;
-        out(ostream, ".");
-        fflush(stdout);
-#endif
+  sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  if (sockfd < 0)
+  {
+      out(ostream, "Failed to create socket: %s\n", strerror(errno));
+      return 1;
+  }
+
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  serv_addr.sin_port = htons(LISTEN_PORT);
+
+  if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
+  {
+      out(stderr, "Failed to bind socket: %s\n", strerror(errno));
+      return 1;
+  }
+
+  listen(sockfd, 3);
+
+  out(ostream, "listening on port %d\n", LISTEN_PORT);
+
+  while(1)
+  {
+    clilen = sizeof(cli_addr);
+    msg_len = 0;
+    healthy_sample = false;
+    memset(msg, 0, sizeof(msg));
+
+    connfd = accept(sockfd, (struct sockaddr*)&cli_addr, &clilen);
+    if (connfd < 0) {
+      out(stderr, "bad response or something: %s\n", strerror(errno));
+      // TODO: don't kill the daemon just because of one bad connection
+      break;
     }
+    setsockopt(connfd, SOL_SOCKET, SO_RCVTIMEO, &sock_timeout_val, sizeof(sock_timeout_val));
 
+    // get the remote peer (useful for debug)
+    //peer_addr = (uint32_t)cli_addr.sin_addr.s_addr;
+    memset(peer_ip_addr_str, 0, IP_ADDRESS_SZ + 1);
+    inet_ntop(AF_INET, &cli_addr.sin_addr, peer_ip_addr_str, sizeof(peer_ip_addr_str));
+    //snprintf(peer_ip_addr_str, IP_ADDRESS_SZ, "%d.%d.%d.%d", peer_addr & 0xff, (peer_addr >> 8) & 0xff, (peer_addr >> 16) & 0xff, (peer_addr >> 24) & 0xff);
+
+    do {
+      bytes_read = read(connfd, rawbuf, MAX_BUFF_SZ);
+      // parse
+      if(bytes_read > 0) {
+        // how much sapce is left in the buffer?
+        space_left = sizeof(msg) - msg_len - 1;
+
+        // grab the whole buffer if we have room, else, just grab however much we have room for
+        bytes_to_grab = (uint) umin(space_left, bytes_read);
+
+        memcpy(&msg[msg_len], rawbuf, bytes_to_grab);
+        msg_len += bytes_to_grab;
+        end_of_msg = strchr(msg, '\n');
+        if (end_of_msg) {
+          // Message is healthy
+          healthy_sample = true;
+          break;
+        }
+        if (space_left == 0) {
+          msg[sizeof(msg) - 1] = 0;
+          out(stderr, "message too long from peer: %s\n", peer_ip_addr_str);
+          out(stderr, "message: \"%s\"\n", msg);
+          break;
+        }
+      } else if (bytes_read == 0) {
+        // connection closed by remote peer. I think.
+        break;
+      } else {
+        // socket error
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          out(stderr, "timed-out waiting for newline from peer: %s\n", peer_ip_addr_str);
+          out(stderr, "  incomplete message: \"%s\"\n", msg);
+        } else {
+          out(stderr, "read error from peer: %s\n", peer_ip_addr_str);
+          perror("  errno:");
+        }
+        break;
+      }
+    } while(1);
+    close(connfd);
+
+    if(healthy_sample) dispatch(msg, msg_len, peer_ip_addr_str);
+  }
 }
