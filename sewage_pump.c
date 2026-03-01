@@ -46,5 +46,48 @@ void sewage_pump_handler(key_value_t *kvp)
   pet_the_dog(session_id);
 
   // TODO: parse key value pairs and record them
+#if 0
+        samples++;
+
+        // get time
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        time_str = asctime(timeinfo);
+        // kill the trailing \n from the stupid date-time string
+        index = 0;
+        while(time_str[index] != '\n') index++;
+        time_str[index] = 0;
+
+        if (thread_working)
+            // The child is still working. Just toss the sample.
+            continue;
+
+        s = malloc(sizeof(*s));
+        memset(s, 0, sizeof(*s));
+        if (!session) {
+            out(ostream, "From %s\n", peer_ip_addr_str);
+            sample_head = s;
+            session = 1;
+            res = pthread_attr_init(&attr);
+            if(res == -1) printf("%d\n", __LINE__);
+            res = pthread_create(&thread, &attr, thread_func, NULL);
+            if(res == -1) printf("%d\n", __LINE__);
+            pthread_attr_destroy(&attr);
+        }
+
+        if (s_prev != NULL) {
+          s_prev->next = s;
+        }
+        memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
+        s->ordinal = samples - 1;
+        s->next = NULL;
+        // TODO: set the amps
+        p = strchr(msg, ':');
+        p++;
+        s->amps = strtof(p, NULL);
+        s_prev = s;
+        out(ostream, ".");
+        fflush(stdout);
+#endif
 
 }
