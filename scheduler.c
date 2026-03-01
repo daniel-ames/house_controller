@@ -18,19 +18,20 @@
 #include "logger.h"
 
 static uint32_t session_id_ctr = 0;
-static volatile bool list_is_locked = false;
+// static volatile bool list_is_locked = false;
+static pthread_mutex_t list_lock_m = PTHREAD_MUTEX_INITIALIZER;
 
 static session_t *sessions = NULL;
 
-static inline void get_list_lock()
-{
-  while(list_is_locked);
-  list_is_locked = true;
-}
-static inline void release_list_lock()
-{
-  list_is_locked = false;
-}
+// static inline void get_list_lock()
+// {
+//   while(list_is_locked);
+//   list_is_locked = true;
+// }
+// static inline void release_list_lock()
+// {
+//   list_is_locked = false;
+// }
 
 
 uint32_t create_session(uint32_t inactivity_timeout, void (*callback)(session_t*))
@@ -40,7 +41,7 @@ uint32_t create_session(uint32_t inactivity_timeout, void (*callback)(session_t*
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
 
-  get_list_lock();
+  pthread_mutex_lock(&list_lock_m);
 
   new_session->id = session_id_ctr++;
   new_session->inactivity_timeout = inactivity_timeout;
@@ -60,7 +61,7 @@ uint32_t create_session(uint32_t inactivity_timeout, void (*callback)(session_t*
     s->next = new_session;
   }
   // release the scheduler
-  release_list_lock();
+  pthread_mutex_unlock(&list_lock_m);
   return new_session->id;
 }
 
@@ -69,7 +70,7 @@ void pet_the_dog(uint32_t session_id)
   session_t *s = sessions;
   struct timespec ts;
 
-  get_list_lock();
+  pthread_mutex_lock(&list_lock_m);
   do {
     if(s->id == session_id) {
       clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -77,7 +78,7 @@ void pet_the_dog(uint32_t session_id)
       break;
     }
   } while( (s = s->next) );
-  release_list_lock();
+  pthread_mutex_unlock(&list_lock_m);
 }
 
 static session_t* remove_this_session_and_get_the_next_one(uint32_t session_id)
@@ -127,7 +128,7 @@ void* scheduler_thread(void *ptr)
   while(1) {
     
     if(sessions) {
-      get_list_lock();
+      pthread_mutex_lock(&list_lock_m);
       clock_gettime(CLOCK_MONOTONIC, &ts);
       current_time = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
       s = sessions;
@@ -158,7 +159,7 @@ void* scheduler_thread(void *ptr)
 
         s = s->next;
       } while(s);
-      release_list_lock();
+      pthread_mutex_unlock(&list_lock_m);
     }
 
     // give list modifiers a generous chance to make changes

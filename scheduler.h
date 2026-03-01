@@ -13,6 +13,6 @@ typedef struct session {
 
 
 void* scheduler_thread(void *ptr);
-uint32_t create_session(uint32_t inactivity_time, void *callback);
+uint32_t create_session(uint32_t inactivity_time, void (*callback)(session_t*));
 void pet_the_dog(uint32_t session_id);
 
