@@ -19,7 +19,17 @@
 
 static uint32_t session_id_ctr = 0;
 static pthread_mutex_t list_lock_m = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t sessions_cv;
 static session_t *sessions = NULL;
+
+void init_scheduler()
+{
+  pthread_condattr_t attr;
+  pthread_condattr_init(&attr);
+  pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+  pthread_cond_init(&sessions_cv, &attr);
+  pthread_condattr_destroy(&attr);
+}
 
 
 uint32_t create_session(uint32_t inactivity_timeout, handler_callback_t callback, void* ctx)
@@ -75,14 +85,16 @@ bool pet_the_dog(uint32_t session_id)
 void* scheduler_thread(void *ptr)
 {
   struct timespec ts;
-  uint64_t current_time = 0;
-  // session_t session;
+  uint64_t current_time = 0, next_deadline = 0;;
   session_t **ptr_to_link, *s, *sessions_to_finalize = NULL;
+  bool there_is_a_deadline = false;
 
   // This is a busy loop that manages sessions
   while(1) {
     pthread_mutex_lock(&list_lock_m);
-    if(sessions) {
+    while(1) {
+      next_deadline = 0;
+      there_is_a_deadline = false;
       clock_gettime(CLOCK_MONOTONIC, &ts);
       current_time = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
       ptr_to_link = &sessions;
@@ -101,26 +113,46 @@ void* scheduler_thread(void *ptr)
           continue;
         }
 
+        // When is the next expiration?
+        if(s->inactivity_timeout) {
+          // This one has a timeout. When is it?
+          uint64_t this_deadline = s->last_activity_time + s->inactivity_timeout;
+          if(!there_is_a_deadline || this_deadline < next_deadline) {
+            there_is_a_deadline = true;
+            next_deadline = this_deadline;
+          }
+        }
+
         ptr_to_link = &s->next;
       };
-      pthread_mutex_unlock(&list_lock_m);
 
-      // Service the callbacks. These callbacks must be ridiculously fast.
-      // If they need to do more than a few instructions (and they always will),
-      // then a callback should spawn a new thread to do the work, and return fast.
-      // The scheduler is for scheduling, not sending email alerts.
-      // TODO: instead of calling the callback, should we just spawn a thread for it here?
-      while(sessions_to_finalize) {
-        s = sessions_to_finalize;
-        sessions_to_finalize = sessions_to_finalize->next;
-        if(!s->abort_session && s->callback)
-          s->callback(s->ctx);
-        free(s);
+      // Go service the callbacks
+      if (sessions_to_finalize) break;
+
+      if(there_is_a_deadline) {
+        // do a timed wait
+        ts.tv_sec = next_deadline / 1000ull;
+        ts.tv_nsec = (next_deadline % 1000ull) * 1000000ull;
+        pthread_cond_timedwait(&sessions_cv, &list_lock_m, &ts);
+        continue;
       }
-    } else {
-      pthread_mutex_unlock(&list_lock_m);
-      // give list modifiers a generous chance to make changes
-      usleep(10);
+
+      // No deadlines or callbacks pending.
+      // Just chill.
+      pthread_cond_wait(&sessions_cv, &list_lock_m);
+    }
+    pthread_mutex_unlock(&list_lock_m);
+    // Service the callbacks. These callbacks must be ridiculously fast.
+    // If they need to do more than a few instructions (and they always will),
+    // then a callback should spawn a new thread to do the work, and return fast.
+    // The scheduler is for scheduling, not sending email alerts.
+    // TODO: instead of calling the callback, should we just spawn a thread for it here?
+    while(sessions_to_finalize) {
+      s = sessions_to_finalize;
+      sessions_to_finalize = sessions_to_finalize->next;
+      if(!s->abort_session && s->callback)
+        s->callback(s->ctx);
+      free(s);
     }
   }
 }

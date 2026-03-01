@@ -13,6 +13,7 @@ typedef struct session {
 } session_t;
 
 
+void init_scheduler();
 void* scheduler_thread(void *ptr);
 uint32_t create_session(uint32_t inactivity_time, handler_callback_t, void *ctx);
 bool pet_the_dog(uint32_t session_id);
