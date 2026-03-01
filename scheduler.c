@@ -142,16 +142,18 @@ void* scheduler_thread(void *ptr)
       pthread_cond_wait(&sessions_cv, &list_lock_m);
     }
     pthread_mutex_unlock(&list_lock_m);
-    // Service the callbacks. These callbacks must be ridiculously fast.
-    // If they need to do more than a few instructions (and they always will),
-    // then a callback should spawn a new thread to do the work, and return fast.
-    // The scheduler is for scheduling, not sending email alerts.
-    // TODO: instead of calling the callback, should we just spawn a thread for it here?
+    // Service the callbacks by spawning them in their own threads
     while(sessions_to_finalize) {
       s = sessions_to_finalize;
       sessions_to_finalize = sessions_to_finalize->next;
-      if(!s->abort_session && s->callback)
-        s->callback(s->ctx);
+      if(!s->abort_session && s->callback) {
+        // s->callback(s->ctx);
+        pthread_attr_t attr;
+        pthread_t thread;
+        pthread_attr_init(&attr);
+        pthread_create(&thread, &attr, s->callback, NULL);
+        pthread_attr_destroy(&attr);
+      }
       free(s);
     }
   }
