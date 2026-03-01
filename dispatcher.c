@@ -52,6 +52,7 @@ void dispatch(const char *msg, uint length, char *peer_ip_address)
   // Alls we know about this message at this point is that it's within size limitations (it's not a runaway message),
   // and that it's terminated with a newline. That's it.
   // All we care about right now is the device type, but go ahead and do the text parsing here, once.
+  char *saveptr;
   device_id_e dev_id = unknown_d;
   kvp = kvp_head = kvp_prev = NULL;
 
@@ -60,7 +61,7 @@ void dispatch(const char *msg, uint length, char *peer_ip_address)
   p[length] = 0;
   memcpy(p, msg, length);
 
-  cursor = strtok(p, " ");
+  cursor = strtok_r(p, " ", &saveptr);
   do {
     if(!strncmp(cursor, "dev=", DEVICE_TOKEN_LEN)) {
       // device id
@@ -86,7 +87,9 @@ void dispatch(const char *msg, uint length, char *peer_ip_address)
       make_kvp(amps_type, &cursor[AMPS_TOKEN_LEN]);
     }
 
-  } while( (cursor = strtok(NULL, " ")) );
+  } while( (cursor = strtok_r(NULL, " ", &saveptr)) );
+
+  free(p);
 
   // We now have a linked list of key-value pairs.
   // Pass it to the appropriate handler.

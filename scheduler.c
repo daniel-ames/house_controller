@@ -33,17 +33,21 @@ static inline void release_list_lock()
 }
 
 
-uint32_t create_session(uint32_t inactivity_timeout, void *callback)
+uint32_t create_session(uint32_t inactivity_timeout, void (*callback)(session_t*))
 {
   session_t *s;
   session_t *new_session = malloc(sizeof(session_t));
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
 
   get_list_lock();
 
   new_session->id = session_id_ctr++;
   new_session->inactivity_timeout = inactivity_timeout;
+  new_session->last_activity_time = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   new_session->abort_session = false;
   new_session->end_session = false;
+  new_session->callback = callback;
   new_session->next = NULL;
 
   // scheduler is paused
@@ -57,6 +61,7 @@ uint32_t create_session(uint32_t inactivity_timeout, void *callback)
   }
   // release the scheduler
   release_list_lock();
+  return new_session->id;
 }
 
 void pet_the_dog(uint32_t session_id)
@@ -106,6 +111,7 @@ static session_t* remove_this_session_and_get_the_next_one(uint32_t session_id)
       free(s);
       break;
     }
+    prev = s;
   } while( (s = s->next) );
 
   return new_next;
@@ -135,7 +141,11 @@ void* scheduler_thread(void *ptr)
           continue;
         }
         if(s->end_session) {
-          // Fire the callback
+          // Fire the callback. These callbacks must be ridiculously fast.
+          // If they need to do more than a few instructions (and they always will),
+          // then a callback should spawn a new thread to do the work, and return fast.
+          // The scheduler is for scheduling, not sending email alerts.
+          // TODO: instead of calling the callback, should we just spawn a thread for it here?
           (s->callback)(s);
           // This session is done. Remove it.
           s = remove_this_session_and_get_the_next_one(s->id);
