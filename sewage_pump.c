@@ -24,7 +24,7 @@ typedef struct {
 } sewage_pump_ctx_t;
 
 
-static uint samples = 0;
+static uint32_t samples = 0;
 static bool session_active = false;
 static uint32_t session_id = 0;
 static sewage_pump_ctx_t ctx;

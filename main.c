@@ -30,7 +30,7 @@ volatile int thread_working = 0;
 
 sample_t *sample_head, *s_prev = NULL;
 
-void dispatch(const char *msg, uint length, char *peer_ip_address);
+void dispatch(const char *msg, uint32_t length, char *peer_ip_address);
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
@@ -58,8 +58,8 @@ int main ()
   char msg[MAX_BUFF_SZ];
   char *p,
        *end_of_msg;
-  uint space_left = 0,
-       bytes_to_grab = 0;
+  uint32_t space_left = 0,
+           bytes_to_grab = 0;
 
   // close the port cleanly when I ctrl+C this sumbitch
   signal(SIGINT, handle_sig);
