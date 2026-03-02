@@ -21,7 +21,7 @@ CPPFLAGS :=
 CFLAGS   := -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wcast-qual -Wformat=2
 LDFLAGS  :=
 LDLIBS   := -lpthread
-CPPFLAGS += -D_POSIX_C_SOURCE=200809L
+CPPFLAGS += -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE
 
 # Default target: debug build
 .PHONY: all
