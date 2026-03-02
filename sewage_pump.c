@@ -178,6 +178,7 @@ void sewage_pump_handler(key_value_t *kvp)
     session_active = true;
     samples = 1;
     ctx.samples = s;
+    s_prev = NULL;
     session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, NULL);
     
     timeinfo = localtime(&rawtime);
@@ -200,13 +201,15 @@ void sewage_pump_handler(key_value_t *kvp)
   s->next = NULL;
 
   // Now parse
-  for(key_value_t *k = kvp; k; k = kvp->next) {
+  for(key_value_t *k = kvp; k; ) {
+    key_value_t *next = k->next;
     if (k->key == amps_type) {
       // This is what we came for
       s->amps = k->value.dbl;
     }
     // It is the handler's responsibility to free kvp items
     free(k);
+    k = next;
   }
 
   s_prev = s;
