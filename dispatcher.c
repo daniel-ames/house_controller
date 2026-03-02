@@ -46,7 +46,7 @@ static void msg_is_malformed(const char *msg, char *peer_ip_address)
   out(stderr, "  \"%s\"\n", msg);
 }
 
-void dispatch(const char *msg, uint length, char *peer_ip_address)
+void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
 {
   // incoming message.
   // Alls we know about this message at this point is that it's within size limitations (it's not a runaway message),
