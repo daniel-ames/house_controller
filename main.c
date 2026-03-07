@@ -53,6 +53,28 @@ void handle_sig(int sig)
   }
 }
 
+static bool no_big_deal(int err)
+{
+  return (err == EINTR ||
+          err == EAGAIN ||
+          err == EWOULDBLOCK ||
+          err == ENETDOWN ||
+          err == EPROTO ||
+          err == ENOPROTOOPT ||
+          err == EHOSTDOWN ||
+          err == ENONET ||
+          err == EHOSTUNREACH ||
+          err == EOPNOTSUPP ||
+          err == ENETUNREACH);
+}
+static bool maybe_a_problem(int err)
+{
+  return (err == EMFILE ||
+          err == ENFILE ||
+          err == ENOBUFS ||
+          err == ENOMEM);
+}
+
 
 int main ()
 {
@@ -150,9 +172,16 @@ int main ()
 
     connfd = accept(sockfd, (struct sockaddr*)&cli_addr, &clilen);
     if (connfd < 0) {
-      out(stderr, "bad response or something: %s\n", strerror(errno));
-      // TODO: don't kill the daemon just because of one bad connection
-      break;
+      int errno_temp = errno;
+      if(no_big_deal(errno_temp)) continue;
+      if(maybe_a_problem(errno_temp)) {
+        out(stderr, "Warning: accept() returned %d: %s\n", errno_temp, strerror(errno_temp));
+        // TODO: backoff?
+        continue;
+      } else {
+        out(stderr, "Something bad happened trying to accept() the socket. %d: %s\n", errno_temp, strerror(errno_temp));
+        break;
+      }
     }
     setsockopt(connfd, SOL_SOCKET, SO_RCVTIMEO, &sock_timeout_val, sizeof(sock_timeout_val));
 
