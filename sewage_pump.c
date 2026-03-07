@@ -63,8 +63,8 @@ void clean_list()
 static void compile_measurement(summary_t *summary)
 {
     sample_t *s = ctx.samples;
-    struct tm * timeinfo;
-    char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
+    // struct tm * timeinfo;
+    // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
     int count = 0;
     float min = 1000.0f, max = 0.0f, sum = 0.0f;
 
@@ -104,57 +104,58 @@ static void compile_measurement(summary_t *summary)
 
 void* sewage_pump_callback(void *ptr)
 {
-    summary_t summary;
-    char subject[256] = {0};
+  (void)ptr;
+  summary_t summary;
+  char subject[256] = {0};
 
-    compile_measurement(&summary);
+  compile_measurement(&summary);
 
-    out(stdout, "\nSummary:\n");
-    out(stdout, "  min     : %f\n", summary.min);
-    out(stdout, "  max     : %f\n", summary.max);
-    out(stdout, "  average : %f\n", summary.average);
-    out(stdout, "  samples : %d\n", summary.samples);
-    out(stdout, "  duration: %lu\n\n", summary.duration);
+  out(stdout, "\nSummary:\n");
+  out(stdout, "  min     : %f\n", summary.min);
+  out(stdout, "  max     : %f\n", summary.max);
+  out(stdout, "  average : %f\n", summary.average);
+  out(stdout, "  samples : %d\n", summary.samples);
+  out(stdout, "  duration: %lu\n\n", summary.duration);
 
-    // Put the highlights in the subject line
-    sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
+  // Put the highlights in the subject line
+  sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
 
-    // write the results out to a file
-    FILE *fp = fopen(MEASUREMENT_FILE, "w");
-    fprintf(fp, "To: danieladamames@gmail.com\r\n");
-    fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
-    fprintf(fp, "Subject: %s\r\n", subject);
-    fprintf(fp, "MIME-Version: 1.0\r\n");
-    fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
-    fprintf(fp, "\r\n");
-    fprintf(fp, "This is a multipart message in MIME format.\r\n");
-    fprintf(fp, "\r\n");
-    fprintf(fp, "--xxxx38th parallel\r\n");
-    fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
-    fprintf(fp, "\r\n");
-    fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
-    fprintf(fp, "max/average/samples/duration: %.2f/%.2f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
-    fprintf(fp, "</p>\r\n");
-    fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
-    fprintf(fp, "\r\n");
-    fprintf(fp, "--xxxx38th parallel\r\n");
-    fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
-    fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
-    fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
-    fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
-    fprintf(fp, "Content-ID: <foo_bar>\r\n");
-    fprintf(fp, "\r\n");
-    fflush(fp);
-    fclose(fp);
+  // write the results out to a file
+  FILE *fp = fopen(MEASUREMENT_FILE, "w");
+  fprintf(fp, "To: danieladamames@gmail.com\r\n");
+  fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
+  fprintf(fp, "Subject: %s\r\n", subject);
+  fprintf(fp, "MIME-Version: 1.0\r\n");
+  fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
+  fprintf(fp, "\r\n");
+  fprintf(fp, "This is a multipart message in MIME format.\r\n");
+  fprintf(fp, "\r\n");
+  fprintf(fp, "--xxxx38th parallel\r\n");
+  fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
+  fprintf(fp, "\r\n");
+  fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
+  fprintf(fp, "max/average/samples/duration: %.2f/%.2f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
+  fprintf(fp, "</p>\r\n");
+  fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
+  fprintf(fp, "\r\n");
+  fprintf(fp, "--xxxx38th parallel\r\n");
+  fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
+  fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
+  fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
+  fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
+  fprintf(fp, "Content-ID: <foo_bar>\r\n");
+  fprintf(fp, "\r\n");
+  fflush(fp);
+  fclose(fp);
 
-    system("./sendit.sh");
+  system("./sendit.sh");
 
-    clean_list();
-    session_active = false;
+  clean_list();
+  session_active = false;
 
-    // This function must return a void* to match the signture for pthread_create().
-    // Return null so gcc doesn't complain.
-    return (void*)0;
+  // This function must return a void* to match the signture for pthread_create().
+  // Return null so gcc doesn't complain.
+  return NULL;
 }
 
 
@@ -180,6 +181,22 @@ void sewage_pump_handler(key_value_t *kvp)
     ctx.samples = s;
     s_prev = NULL;
     session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, NULL);
+
+    if(!session_id) {
+      // No session id was issued.
+      // We are probably in the middle of a shutdown.
+      // Throw this session away.
+      for(key_value_t *k = kvp; k; ) {
+        key_value_t *next = k->next;
+        // It is the handler's responsibility to free kvp items
+        free(k);
+        k = next;
+      }
+      free(s);
+      session_active = false;
+      ctx.samples = NULL;
+      return;
+    }
     
     timeinfo = localtime(&rawtime);
     time_str = asctime(timeinfo);

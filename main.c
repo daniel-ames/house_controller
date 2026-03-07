@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
@@ -18,29 +19,39 @@
 #define LISTEN_PORT  27910
 #define IP_ADDRESS_SZ  15  // 111.222.333.444
 
+#define SOCKET_FD  0
+#define PIPE_FD    1
+
+#define WAIT_INDEFINITELY  -1
+
 #define umin(x,y) (((uint64_t)(x) < (uint64_t)(y)) ? (x) : (y))
 
 
-int sockfd;
-int connfd;
+int sockfd = -1;
+int connfd = -1;
+int shutdown_pipe[] = {-1, -1};
 FILE *ostream = NULL;
-volatile int samples = 0;
-volatile int session = 0;
-volatile int thread_working = 0;
 
-sample_t *sample_head, *s_prev = NULL;
+extern pthread_cond_t sessions_cv;
+extern pthread_t scheduler_pthread;
+extern bool shutdown_flag;
+extern pthread_mutex_t shutdown_flag_lock_m;
+
+
 
 void dispatch(const char *msg, uint32_t length, char *peer_ip_address);
+int innit_scheduler();
+
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
 {
-    close(connfd);
-    close(sockfd);
-    //logger_handle_sig();
-    exit(0);
+  (void)sig;
+  if (shutdown_pipe[1] != -1) {
+    uint8_t foxes = 0xff;
+    write(shutdown_pipe[1], &foxes, 1);
+  }
 }
-
 
 
 int main ()
@@ -49,6 +60,7 @@ int main ()
   socklen_t  clilen;
   struct timeval sock_timeout_val = {.tv_sec = 1, .tv_usec = 0};
   int bytes_read, msg_len = 0;
+  int ret = 0;
 
   bool healthy_sample = false;
 
@@ -56,20 +68,19 @@ int main ()
 
   char rawbuf[MAX_BUFF_SZ];
   char msg[MAX_BUFF_SZ];
-  char *p,
-       *end_of_msg;
+  char *end_of_msg;
   uint32_t space_left = 0,
            bytes_to_grab = 0;
 
   // close the port cleanly when I ctrl+C this sumbitch
-  signal(SIGINT, handle_sig);
-  signal(SIGTERM, handle_sig);
+  struct sigaction sa = {.sa_handler = handle_sig};
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGTERM, &sa, NULL);
 
   ostream = stdout;
 
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0)
-  {
+  if (sockfd < 0) {
       out(ostream, "Failed to create socket: %s\n", strerror(errno));
       return 1;
   }
@@ -78,18 +89,60 @@ int main ()
   serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   serv_addr.sin_port = htons(LISTEN_PORT);
 
-  if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
-  {
+  if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
       out(stderr, "Failed to bind socket: %s\n", strerror(errno));
       return 1;
   }
 
-  listen(sockfd, 3);
+  if(listen(sockfd, 3) != 0) {
+      out(stderr, "Failed to listen on socket: %s\n", strerror(errno));
+      return 1;
+  }
+
+  if(pipe(shutdown_pipe) != 0) {
+    out(stderr, "Failed to create shutdown pipe: %s\n", strerror(errno));
+    return 1;
+  }
+
+  if( (ret = innit_scheduler()) != 0) {
+      out(stderr, "Failed to kick off the scheduler. Something in innit_scheduler() failed. ret = %d\n", ret);
+      return ret;
+  }
+
+  struct pollfd polls[] =
+  {
+    [SOCKET_FD] = {.fd = sockfd,           .events = POLLIN, .revents = 0},
+    [PIPE_FD]   = {.fd = shutdown_pipe[0], .events = POLLIN, .revents = 0}
+  };
+
 
   out(ostream, "listening on port %d\n", LISTEN_PORT);
 
-  while(1)
-  {
+  while(1) {
+
+    // reset the return events of the FDs we're listing to
+    polls[SOCKET_FD].revents = 0;
+    polls[PIPE_FD].revents = 0;
+
+    // Wait for the socket or the pipe to squawk
+    ret = poll(polls, 2, WAIT_INDEFINITELY);
+    if(ret < 0) {
+      if (errno == EINTR) continue;
+      out(stderr, "wth? Pole broke!: %s\n", strerror(errno));
+      break;
+    }
+
+    if(polls[PIPE_FD].revents & POLLIN) {
+      // Somebody wrote to the pipe. As of this writing, that means
+      // I hit ctrl+c or otherwise sent a sigint or sigterm to the process.
+      // Drain the pipe and bail.
+      uint8_t buf[32];
+      read(polls[PIPE_FD].fd, buf, sizeof(buf));
+      break;
+    }
+
+    if(!(polls[SOCKET_FD].revents & POLLIN)) continue;
+
     clilen = sizeof(cli_addr);
     msg_len = 0;
     healthy_sample = false;
@@ -150,7 +203,25 @@ int main ()
       }
     } while(1);
     close(connfd);
+    connfd = -1;
 
     if(healthy_sample) dispatch(msg, msg_len, peer_ip_addr_str);
   }
+
+  // Tell the scheduler to wrap things up and exit
+
+  // Set the shutdown flag
+  pthread_mutex_lock(&shutdown_flag_lock_m);
+  shutdown_flag = true;
+  pthread_mutex_unlock(&shutdown_flag_lock_m);
+
+  // kick the scheduler
+  pthread_cond_broadcast(&sessions_cv);
+
+  // wait for it to die
+  pthread_join(scheduler_pthread, NULL);
+
+  close(sockfd);
+  close(shutdown_pipe[1]);
+  close(shutdown_pipe[0]);
 }
