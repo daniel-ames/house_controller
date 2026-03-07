@@ -49,7 +49,9 @@ void handle_sig(int sig)
   (void)sig;
   if (shutdown_pipe[1] != -1) {
     uint8_t foxes = 0xff;
+    int saved_errno = errno; // write() can change errno. Prolly fine, but Sprocket insisted.
     write(shutdown_pipe[1], &foxes, 1);
+    errno = saved_errno;
   }
 }
 
@@ -142,10 +144,6 @@ int main ()
 
   while(1) {
 
-    // reset the return events of the FDs we're listing to
-    polls[SOCKET_FD].revents = 0;
-    polls[PIPE_FD].revents = 0;
-
     // Wait for the socket or the pipe to squawk
     ret = poll(polls, 2, WAIT_INDEFINITELY);
     if(ret < 0) {
@@ -163,7 +161,12 @@ int main ()
       break;
     }
 
-    if(!(polls[SOCKET_FD].revents & POLLIN)) continue;
+    if (polls[SOCKET_FD].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      out(stderr, "Listening socket poll error: revents=0x%x\n", polls[SOCKET_FD].revents);
+      break;
+    }
+
+    if (!(polls[SOCKET_FD].revents & POLLIN)) continue;
 
     clilen = sizeof(cli_addr);
     msg_len = 0;
@@ -178,10 +181,9 @@ int main ()
         out(stderr, "Warning: accept() returned %d: %s\n", errno_temp, strerror(errno_temp));
         // TODO: backoff?
         continue;
-      } else {
-        out(stderr, "Something bad happened trying to accept() the socket. %d: %s\n", errno_temp, strerror(errno_temp));
-        break;
       }
+      out(stderr, "Something bad happened trying to accept() the socket. %d: %s\n", errno_temp, strerror(errno_temp));
+      break;
     }
     setsockopt(connfd, SOL_SOCKET, SO_RCVTIMEO, &sock_timeout_val, sizeof(sock_timeout_val));
 
