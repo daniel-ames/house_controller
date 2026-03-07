@@ -17,26 +17,54 @@
 #include "scheduler.h"
 #include "logger.h"
 
-static uint32_t session_id_ctr = 0;
+static uint32_t session_id_ctr = 1;
 static pthread_mutex_t list_lock_m = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sessions_cv;
+
+bool shutdown_flag = false;
+pthread_mutex_t shutdown_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
+pthread_t scheduler_pthread;
+
+
 static session_t *sessions = NULL;
 
-void init_scheduler()
+void* scheduler_thread(void *ptr);
+
+// (pronounced innit SHED-djyooler, because I watch too much bri-ish tele, innit?)
+int innit_scheduler()
 {
-  pthread_condattr_t attr;
-  pthread_condattr_init(&attr);
-  pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
-  pthread_cond_init(&sessions_cv, &attr);
-  pthread_condattr_destroy(&attr);
+  int ret = 0;
+  pthread_condattr_t attr_cv;
+  ret |= pthread_condattr_init(&attr_cv);
+  ret |= pthread_condattr_setclock(&attr_cv, CLOCK_MONOTONIC);
+  ret |= pthread_cond_init(&sessions_cv, &attr_cv);
+  ret |= pthread_condattr_destroy(&attr_cv);
+
+  // kickoff the SHEDuler
+  pthread_attr_t attr_thread;
+  ret |= pthread_attr_init(&attr_thread);
+  ret |= pthread_create(&scheduler_pthread, &attr_thread, scheduler_thread, NULL);
+  ret |= pthread_attr_destroy(&attr_thread);
+
+  // Yes, I know (ret == !0) can mean 7 different things here. I'm fine with that.
+  // I just want any errors to latch to keep the code cleaner. If there IS a latch,
+  // THEN I'll come in here and start digging.
+  return ret;
 }
 
 
 uint32_t create_session(uint32_t inactivity_timeout, handler_callback_t callback, void* ctx)
 {
-  session_t *s;
-  session_t *new_session = malloc(sizeof(session_t));
+  session_t *s, *new_session;
   struct timespec ts;
+
+  pthread_mutex_lock(&shutdown_flag_lock_m);
+  bool shutdown = shutdown_flag;
+  pthread_mutex_unlock(&shutdown_flag_lock_m);
+  if(shutdown) return 0;
+
+  new_session = malloc(sizeof(session_t));
+
   clock_gettime(CLOCK_MONOTONIC, &ts);
 
   new_session->id = session_id_ctr++;
@@ -59,6 +87,7 @@ uint32_t create_session(uint32_t inactivity_timeout, handler_callback_t callback
     s->next = new_session;
   }
   // release the scheduler
+  pthread_cond_signal(&sessions_cv);
   pthread_mutex_unlock(&list_lock_m);
   return new_session->id;
 }
@@ -84,10 +113,12 @@ bool pet_the_dog(uint32_t session_id)
 
 void* scheduler_thread(void *ptr)
 {
+  (void)ptr;
   struct timespec ts;
   uint64_t current_time = 0, next_deadline = 0;;
   session_t **ptr_to_link, *s, *sessions_to_finalize = NULL;
   bool there_is_a_deadline = false;
+  bool shutdown = false;
 
   // This is a busy loop that manages sessions
   while(1) {
@@ -140,6 +171,11 @@ void* scheduler_thread(void *ptr)
       // No deadlines or callbacks pending.
       // Just chill.
       pthread_cond_wait(&sessions_cv, &list_lock_m);
+
+      pthread_mutex_lock(&shutdown_flag_lock_m);
+      shutdown = shutdown_flag;
+      pthread_mutex_unlock(&shutdown_flag_lock_m);
+      if(shutdown) break;
     }
     pthread_mutex_unlock(&list_lock_m);
     // Service the callbacks by spawning them in their own threads
@@ -151,10 +187,12 @@ void* scheduler_thread(void *ptr)
         pthread_attr_t attr;
         pthread_t thread;
         pthread_attr_init(&attr);
-        pthread_create(&thread, &attr, s->callback, NULL);
+        pthread_create(&thread, &attr, s->callback, s->ctx);
         pthread_attr_destroy(&attr);
       }
       free(s);
     }
+    if(shutdown) break;
   }
+  return NULL;
 }
