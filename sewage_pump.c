@@ -48,7 +48,7 @@ void time_my_way(struct tm * time, char * out)
   sprintf(out, "%d:%d:%d %s", hour, time->tm_min, time->tm_sec, meridian);
 }
 
-void destroy_context(sewage_pump_ctx_t *ctx)
+static void destroy_context(sewage_pump_ctx_t *ctx)
 {
   sample_t *next, *s = ctx->head_sample;
   
@@ -60,17 +60,37 @@ void destroy_context(sewage_pump_ctx_t *ctx)
   free(ctx);
 }
 
-static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx)
+static void cleanup_working_dir(char *temp_dir)
+{
+  char file_path[256] = {0};
+  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
+  unlink(file_path);
+  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, PLOT_FILE);
+  unlink(file_path);
+  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "email");
+  unlink(file_path);
+  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.png");
+  unlink(file_path);
+  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.b64");
+  unlink(file_path);
+  snprintf(file_path, sizeof(file_path), "%s", temp_dir);
+  rmdir(file_path);
+}
+
+static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char *temp_dir)
 {
   sample_t *s = ctx->head_sample;
   // struct tm * timeinfo;
   // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
   int count = 0;
   float min = 1000.0f, max = 0.0f, sum = 0.0f;
+  char plot_file_path[256] = {0};
 
   __u_long start_time = (__u_long)s->timestamp, end_time;
 
-  FILE *fp = fopen(PLOT_FILE, "w");
+  snprintf(plot_file_path, sizeof(plot_file_path), "%s/%s", temp_dir, PLOT_FILE);
+
+  FILE *fp = fopen(plot_file_path, "w");
 
   do {
     // // parse the time
@@ -102,15 +122,25 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx)
 }
 
 
-void* sewage_pump_callback(void *ptr)
+static void* sewage_pump_callback(void *ptr)
 {
   sewage_pump_ctx_t *ctx = (sewage_pump_ctx_t*)ptr;
   session_active = false;
 
   summary_t summary;
   char subject[256] = {0};
+  char temp_dir[] = "_sp_XXXXXX";
+  char measurement_file_path[256] = {0};
+  char command[256] = {0};
 
-  compile_measurement(&summary, ctx);
+  // create a unique temp working directory
+  if(!mkdtemp(temp_dir)) {
+    out(stderr, "Panic: Couldn't create temp dir \"%s\". %d: %s\n", temp_dir, errno, strerror(errno));
+    panic();
+    return NULL;
+  }
+
+  compile_measurement(&summary, ctx, temp_dir);
 
   out(stdout, "\nSummary:\n");
   out(stdout, "  min     : %f\n", summary.min);
@@ -120,10 +150,11 @@ void* sewage_pump_callback(void *ptr)
   out(stdout, "  duration: %lu\n\n", summary.duration);
 
   // Put the highlights in the subject line
-  sprintf(subject, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
+  snprintf(subject, 256, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
 
   // write the results out to a file
-  FILE *fp = fopen(MEASUREMENT_FILE, "w");
+  snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
+  FILE *fp = fopen(measurement_file_path, "w");
   fprintf(fp, "To: danieladamames@gmail.com\r\n");
   fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
   fprintf(fp, "Subject: %s\r\n", subject);
@@ -150,9 +181,12 @@ void* sewage_pump_callback(void *ptr)
   fflush(fp);
   fclose(fp);
 
-  system("./sendit.sh");
+  snprintf(command, sizeof(command), "./sendit.sh %s", temp_dir);
+  system(command);
 
   destroy_context(ctx);
+
+  cleanup_working_dir(temp_dir);
 
   // This function must return a void* to match the signture for pthread_create().
   // Return null so gcc doesn't complain.

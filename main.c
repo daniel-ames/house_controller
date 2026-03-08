@@ -32,8 +32,7 @@ int connfd = -1;
 int shutdown_pipe[] = {-1, -1};
 FILE *ostream = NULL;
 
-pthread_mutex_t panic_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
-bool panic_flag;
+
 
 extern pthread_cond_t sessions_cv;
 extern pthread_t scheduler_pthread;
@@ -57,25 +56,6 @@ void handle_sig(int sig)
   }
 }
 
-
-void panic()
-{
-  // Set the panic flag
-  pthread_mutex_lock(&panic_flag_lock_m);
-  panic_flag = true;
-  pthread_mutex_unlock(&panic_flag_lock_m);
-  // hijack handle_sig to write to the shutdown pipe
-  handle_sig(0);
-}
-
-static bool there_is_a_panic()
-{
-  // Get the panic flag
-  pthread_mutex_lock(&panic_flag_lock_m);
-  bool panic_status = panic_flag;
-  pthread_mutex_unlock(&panic_flag_lock_m);
-  return panic_status;
-}
 
 
 static bool no_big_deal(int err)
