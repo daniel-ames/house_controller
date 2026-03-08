@@ -18,13 +18,12 @@
 #include "logger.h"
 
 static uint32_t session_id_ctr = 1;
-static pthread_mutex_t list_lock_m = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t sessions_cv;
 
-bool shutdown_flag = false;
-pthread_mutex_t shutdown_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
 pthread_t scheduler_pthread;
 
+bool shutdown_flag = false;
+pthread_mutex_t scheduler_lock_m = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t sessions_cv;
 
 static session_t *sessions = NULL;
 
@@ -53,17 +52,40 @@ int innit_scheduler()
 }
 
 
+static bool i_dont_have_the_lock_and_shutdown_is_requested()
+{
+  // Hey future-daniel, DO NOT call this function from code that already has
+  // the scheduler_lock_m lock! If you do, the following pthread_mutex_lock()
+  // will deadlock, and you will be a sad panda.
+  // I know what you're thinking: Yes, you CAN make it to where it will return
+  // an error (EDEADLK) instead of just lock, but Sprocket got all preachy when 
+  // I suggested that. Something about "using a smoke alarm as a kitchen timer"..
+  // iono, but she was very persuasive.
+  pthread_mutex_lock(&scheduler_lock_m);
+  bool shutdown = shutdown_flag;
+  pthread_mutex_unlock(&scheduler_lock_m);
+  return shutdown;
+}
+
+
 uint32_t create_session(uint32_t inactivity_timeout, handler_callback_t callback, void* ctx)
 {
   session_t *s, *new_session;
   struct timespec ts;
 
-  pthread_mutex_lock(&shutdown_flag_lock_m);
-  bool shutdown = shutdown_flag;
-  pthread_mutex_unlock(&shutdown_flag_lock_m);
-  if(shutdown) return 0;
+  pthread_mutex_lock(&scheduler_lock_m);
+  if(shutdown_flag) {
+    pthread_mutex_unlock(&scheduler_lock_m);
+    return 0;
+  }
 
   new_session = malloc(sizeof(session_t));
+  if(!new_session) {
+    out(stderr, "Panic: Could not malloc new_session!\n");
+    pthread_mutex_unlock(&scheduler_lock_m);
+    panic();
+    return 0;
+  }
 
   clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -76,7 +98,6 @@ uint32_t create_session(uint32_t inactivity_timeout, handler_callback_t callback
   new_session->callback = callback;
   new_session->next = NULL;
 
-  pthread_mutex_lock(&list_lock_m);
   // scheduler is paused
   if(!sessions) {
     sessions = new_session;
@@ -88,7 +109,7 @@ uint32_t create_session(uint32_t inactivity_timeout, handler_callback_t callback
   }
   // release the scheduler
   pthread_cond_signal(&sessions_cv);
-  pthread_mutex_unlock(&list_lock_m);
+  pthread_mutex_unlock(&scheduler_lock_m);
   return new_session->id;
 }
 
@@ -97,7 +118,7 @@ bool pet_the_dog(uint32_t session_id)
   struct timespec ts;
   bool dog_was_petted = false;
 
-  pthread_mutex_lock(&list_lock_m);
+  pthread_mutex_lock(&scheduler_lock_m);
   for(session_t *s = sessions; s; s = s->next) {
     if(s->id == session_id) {
       clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -106,18 +127,9 @@ bool pet_the_dog(uint32_t session_id)
       break;
     }
   }
-  pthread_mutex_unlock(&list_lock_m);
+  pthread_mutex_unlock(&scheduler_lock_m);
   return dog_was_petted;
 }
-
-static bool shutdown_requested()
-{
-  pthread_mutex_lock(&shutdown_flag_lock_m);
-  bool shutdown = shutdown_flag;
-  pthread_mutex_unlock(&shutdown_flag_lock_m);
-  return shutdown;
-}
-
 
 void* scheduler_thread(void *ptr)
 {
@@ -130,7 +142,7 @@ void* scheduler_thread(void *ptr)
 
   // This is a busy loop that manages sessions
   while(1) {
-    pthread_mutex_lock(&list_lock_m);
+    pthread_mutex_lock(&scheduler_lock_m);
     while(1) {
       next_deadline = 0;
       there_is_a_deadline = false;
@@ -172,17 +184,17 @@ void* scheduler_thread(void *ptr)
         // do a timed wait
         ts.tv_sec = next_deadline / 1000ull;
         ts.tv_nsec = (next_deadline % 1000ull) * 1000000ull;
-        pthread_cond_timedwait(&sessions_cv, &list_lock_m, &ts);
+        pthread_cond_timedwait(&sessions_cv, &scheduler_lock_m, &ts);
         continue;
       }
 
-      if(shutdown_requested()) break;
+      if(shutdown_flag) break;
 
       // No deadlines or callbacks pending.
       // Just chill.
-      pthread_cond_wait(&sessions_cv, &list_lock_m);
+      pthread_cond_wait(&sessions_cv, &scheduler_lock_m);
     }
-    pthread_mutex_unlock(&list_lock_m);
+    pthread_mutex_unlock(&scheduler_lock_m);
     // Service the callbacks by spawning them in their own threads
     while(sessions_to_finalize) {
       s = sessions_to_finalize;
@@ -215,7 +227,7 @@ void* scheduler_thread(void *ptr)
       }
       free(s);
     }
-    if(shutdown_requested()) break;
+    if(i_dont_have_the_lock_and_shutdown_is_requested()) break;
   }
   return NULL;
 }
