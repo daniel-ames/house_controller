@@ -221,7 +221,7 @@ static void* wellhouse_callback(void *ptr)
 
   // TODO: sendit.sh will not handle a 2 column plots file.
   // Sprocket, don't let me forget this.
-  snprintf(command, sizeof(command), "./sendit.sh %s", temp_dir);
+  snprintf(command, sizeof(command), "./sendit.sh %s wellhouse", temp_dir);
   system(command);
 
   destroy_context(ctx);
