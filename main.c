@@ -37,7 +37,7 @@ FILE *ostream = NULL;
 extern pthread_cond_t sessions_cv;
 extern pthread_t scheduler_pthread;
 extern bool shutdown_flag;
-extern pthread_mutex_t shutdown_flag_lock_m;
+extern pthread_mutex_t scheduler_lock_m;
 
 
 
@@ -250,9 +250,9 @@ int main ()
   // Tell the scheduler to wrap things up and exit
 
   // Set the shutdown flag
-  pthread_mutex_lock(&shutdown_flag_lock_m);
+  pthread_mutex_lock(&scheduler_lock_m);
   shutdown_flag = true;
-  pthread_mutex_unlock(&shutdown_flag_lock_m);
+  pthread_mutex_unlock(&scheduler_lock_m);
 
   // kick the scheduler
   pthread_cond_broadcast(&sessions_cv);
