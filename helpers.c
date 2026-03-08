@@ -6,6 +6,7 @@
 
 pthread_mutex_t panic_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
 bool panic_flag;
+void handle_sig();
 
 void free_kvp_list(key_value_t *kvp)
 {
