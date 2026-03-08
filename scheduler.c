@@ -25,8 +25,6 @@ bool shutdown_flag = false;
 pthread_mutex_t shutdown_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
 pthread_t scheduler_pthread;
 
-extern pthread_mutex_t panic_flag_lock_m;
-extern bool panic_flag;
 void panic();
 
 
@@ -114,6 +112,14 @@ bool pet_the_dog(uint32_t session_id)
   return dog_was_petted;
 }
 
+static bool shutdown_requested()
+{
+  pthread_mutex_lock(&shutdown_flag_lock_m);
+  bool shutdown = shutdown_flag;
+  pthread_mutex_unlock(&shutdown_flag_lock_m);
+  return shutdown;
+}
+
 
 void* scheduler_thread(void *ptr)
 {
@@ -123,7 +129,6 @@ void* scheduler_thread(void *ptr)
   session_t **ptr_to_link, *s, *sessions_to_finalize = NULL;
   int ret = 0;
   bool there_is_a_deadline = false;
-  bool shutdown = false;
 
   // This is a busy loop that manages sessions
   while(1) {
@@ -173,14 +178,11 @@ void* scheduler_thread(void *ptr)
         continue;
       }
 
+      if(shutdown_requested()) break;
+
       // No deadlines or callbacks pending.
       // Just chill.
       pthread_cond_wait(&sessions_cv, &list_lock_m);
-
-      pthread_mutex_lock(&shutdown_flag_lock_m);
-      shutdown = shutdown_flag;
-      pthread_mutex_unlock(&shutdown_flag_lock_m);
-      if(shutdown) break;
     }
     pthread_mutex_unlock(&list_lock_m);
     // Service the callbacks by spawning them in their own threads
@@ -215,7 +217,7 @@ void* scheduler_thread(void *ptr)
       }
       free(s);
     }
-    if(shutdown) break;
+    if(shutdown_requested()) break;
   }
   return NULL;
 }
