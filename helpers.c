@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdio.h>
 
 #include "controller.h"
 
