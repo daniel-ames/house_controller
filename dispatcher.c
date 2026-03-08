@@ -68,6 +68,7 @@ void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
       if(!cursor[DEVICE_TOKEN_LEN]) {
         // value is blank. this should never happen
         msg_is_malformed(msg, peer_ip_address);
+        dev_id = unknown_d;
         break;
       }
       make_kvp(device_type, &cursor[DEVICE_TOKEN_LEN]);
@@ -82,6 +83,7 @@ void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
       if(!cursor[AMPS_TOKEN_LEN]) {
         // value is blank. this should never happen
         msg_is_malformed(msg, peer_ip_address);
+        dev_id = unknown_d;
         break;
       }
       make_kvp(amps_type, &cursor[AMPS_TOKEN_LEN]);
