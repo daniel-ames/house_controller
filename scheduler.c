@@ -25,8 +25,6 @@ bool shutdown_flag = false;
 pthread_mutex_t shutdown_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
 pthread_t scheduler_pthread;
 
-void panic();
-
 
 static session_t *sessions = NULL;
 
