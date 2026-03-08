@@ -20,95 +20,97 @@
 
 
 typedef struct {
-  sample_t *samples;
+  sample_t *head_sample;
+  sample_t *tail_sample;
+  uint32_t number_of_samples;
+  uint32_t session_id;
 } sewage_pump_ctx_t;
 
-
-static uint32_t samples = 0;
-static bool session_active = false;
-static uint32_t session_id = 0;
-static sewage_pump_ctx_t ctx;
+static volatile bool session_active = false;
 
 
 // make the time look like: 3:45:24 PM
 void time_my_way(struct tm * time, char * out)
 {
-    int hour = 0;
-    char meridian[3] = {0};
-    if (time->tm_hour > 12) {
-        meridian[0] = 'P';
-        hour = time->tm_hour - 12;
-    }
-    else {
-        meridian[0] = 'A';
-        hour = time->tm_hour == 0 ? 12 : time->tm_hour;
-    }
+  int hour = 0;
+  char meridian[3] = {0};
+  if (time->tm_hour > 12) {
+    meridian[0] = 'P';
+    hour = time->tm_hour - 12;
+  }
+  else {
+    meridian[0] = 'A';
+    hour = time->tm_hour == 0 ? 12 : time->tm_hour;
+  }
 
-    meridian[1] = 'M';
+  meridian[1] = 'M';
 
-    sprintf(out, "%d:%d:%d %s", hour, time->tm_min, time->tm_sec, meridian);
+  sprintf(out, "%d:%d:%d %s", hour, time->tm_min, time->tm_sec, meridian);
 }
 
-void clean_list()
+void destroy_context(sewage_pump_ctx_t *ctx)
 {
-    sample_t *next, *s = ctx.samples;
-    
-    do {
-        next = s->next;
-        free(s);
-        s = next;
-    } while(s != NULL);
+  sample_t *next, *s = ctx->head_sample;
+  
+  do {
+    next = s->next;
+    free(s);
+    s = next;
+  } while(s != NULL);
+  free(ctx);
 }
 
-static void compile_measurement(summary_t *summary)
+static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx)
 {
-    sample_t *s = ctx.samples;
-    // struct tm * timeinfo;
-    // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
-    int count = 0;
-    float min = 1000.0f, max = 0.0f, sum = 0.0f;
+  sample_t *s = ctx->head_sample;
+  // struct tm * timeinfo;
+  // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
+  int count = 0;
+  float min = 1000.0f, max = 0.0f, sum = 0.0f;
 
-    __u_long start_time = (__u_long)s->timestamp, end_time;
+  __u_long start_time = (__u_long)s->timestamp, end_time;
 
-    FILE *fp = fopen(PLOT_FILE, "w");
+  FILE *fp = fopen(PLOT_FILE, "w");
 
-    do {
-        // // parse the time
-        // timeinfo = localtime(&s->timestamp);
-        // time_my_way(timeinfo, time_str);
+  do {
+    // // parse the time
+    // timeinfo = localtime(&s->timestamp);
+    // time_my_way(timeinfo, time_str);
 
-        // // show it (optional)
-        // printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
+    // // show it (optional)
+    // printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
 
-        if(s->amps > max) max = s->amps;
-        if(s->amps < min) min = s->amps;
-        sum += s->amps;
-        count++;
-        end_time = (__u_long)s->timestamp;
-        fprintf(fp, "%d %.1f\n", count, s->amps);
+    if(s->amps > max) max = s->amps;
+    if(s->amps < min) min = s->amps;
+    sum += s->amps;
+    count++;
+    end_time = (__u_long)s->timestamp;
+    fprintf(fp, "%d %.1f\n", count, s->amps);
 
-        // on to the next
-        s = s->next;
-    } while(s);
+    // on to the next
+    s = s->next;
+  } while(s);
 
-    fflush(fp);
-    fclose(fp);
+  fflush(fp);
+  fclose(fp);
 
-    summary->min = min;
-    summary->max = max;
-    summary->samples = count;
-    summary->average = sum / (float)count;
-    summary->duration = end_time - start_time;
+  summary->min = min;
+  summary->max = max;
+  summary->samples = count;
+  summary->average = sum / (float)count;
+  summary->duration = end_time - start_time;
 }
 
 
 void* sewage_pump_callback(void *ptr)
 {
-  (void)ptr;
+  sewage_pump_ctx_t *ctx = (sewage_pump_ctx_t*)ptr;
+  session_active = false;
+
   summary_t summary;
   char subject[256] = {0};
 
-  compile_measurement(&summary);
+  compile_measurement(&summary, ctx);
 
   out(stdout, "\nSummary:\n");
   out(stdout, "  min     : %f\n", summary.min);
@@ -150,8 +152,7 @@ void* sewage_pump_callback(void *ptr)
 
   system("./sendit.sh");
 
-  clean_list();
-  session_active = false;
+  destroy_context(ctx);
 
   // This function must return a void* to match the signture for pthread_create().
   // Return null so gcc doesn't complain.
@@ -163,7 +164,7 @@ void sewage_pump_handler(key_value_t *kvp)
 {
   time_t rawtime;
   sample_t *s;
-  static sample_t *s_prev;
+  static sewage_pump_ctx_t *ctx;
   struct tm * timeinfo;
   char *time_str;
   int index = 0;
@@ -177,24 +178,20 @@ void sewage_pump_handler(key_value_t *kvp)
   if(!session_active) {
     // This is a new session
     session_active = true;
-    samples = 1;
-    ctx.samples = s;
-    s_prev = NULL;
-    session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, NULL);
+    ctx = malloc(sizeof(*ctx));
+    ctx->number_of_samples = 0;
+    ctx->head_sample = s;
+    ctx->tail_sample = NULL;
+    ctx->session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, ctx);
 
-    if(!session_id) {
+    if(!ctx->session_id) {
       // No session id was issued.
       // We are probably in the middle of a shutdown.
       // Throw this session away.
-      for(key_value_t *k = kvp; k; ) {
-        key_value_t *next = k->next;
-        // It is the handler's responsibility to free kvp items
-        free(k);
-        k = next;
-      }
+      free_kvp_list(kvp);
       free(s);
+      free(ctx);
       session_active = false;
-      ctx.samples = NULL;
       return;
     }
     
@@ -208,28 +205,40 @@ void sewage_pump_handler(key_value_t *kvp)
   }
 
   // Tell the scheduler we're actively getting readings from the device
-  pet_the_dog(session_id);
+  if(!pet_the_dog(ctx->session_id)) {
+    // This is highly improbable, but not impossible.
+    // This could be a blip. If it is, I don't mind just tossing it.
+    // If it really is the start of a new flush faster than a new session could be created for it, then:
+    //   1. Something is wrong with the pump. IMPORTANT TODO: write an alert path for this.
+    //   2. More samples will follow this one, and by then, this improbable gap
+    //      between the last session ending and a new session beginning, will have
+    //      passed, and we won't land in here for those next samples.
+    // That said, whether it's a blip or a new session, we can reasonably dontcare this sample.
+    free(s);
+    free_kvp_list(kvp);
+    return;
+  }
 
-  if (s_prev)
-    s_prev->next = s;
+  if (ctx->tail_sample)
+    ctx->tail_sample->next = s;
 
   memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
-  s->ordinal = samples++;
+  s->ordinal = ++ctx->number_of_samples;
   s->next = NULL;
 
   // Now parse
-  for(key_value_t *k = kvp; k; ) {
-    key_value_t *next = k->next;
+  for(key_value_t *k = kvp; k; k = k->next) {
     if (k->key == amps_type) {
       // This is what we came for
       s->amps = k->value.dbl;
+      break;
     }
-    // It is the handler's responsibility to free kvp items
-    free(k);
-    k = next;
   }
 
-  s_prev = s;
+  // It is the handler's responsibility to free kvp items
+  free_kvp_list(kvp);
+
+  ctx->tail_sample = s;
   out(stdout, ".");
   fflush(stdout);
 }
