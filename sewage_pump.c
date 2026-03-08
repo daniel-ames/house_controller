@@ -212,7 +212,7 @@ static void* sewage_pump_callback(void *ptr)
   fflush(fp);
   fclose(fp);
 
-  snprintf(command, sizeof(command), "./sendit.sh %s", temp_dir);
+  snprintf(command, sizeof(command), "./sendit.sh %s sewage", temp_dir);
   system(command);
 
   destroy_context(ctx);
