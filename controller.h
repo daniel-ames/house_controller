@@ -39,13 +39,6 @@ typedef struct key_value {
   struct key_value* next;
 } key_value_t;
 
-typedef struct sample {
-  float amps;
-  time_t timestamp;
-  int ordinal;
-  struct sample *next;
-} sample_t;
-
 typedef struct {
   float average;
   float max;
