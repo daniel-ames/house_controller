@@ -25,6 +25,10 @@ bool shutdown_flag = false;
 pthread_mutex_t shutdown_flag_lock_m = PTHREAD_MUTEX_INITIALIZER;
 pthread_t scheduler_pthread;
 
+extern pthread_mutex_t panic_flag_lock_m;
+extern bool panic_flag;
+void panic();
+
 
 static session_t *sessions = NULL;
 
@@ -117,6 +121,7 @@ void* scheduler_thread(void *ptr)
   struct timespec ts;
   uint64_t current_time = 0, next_deadline = 0;;
   session_t **ptr_to_link, *s, *sessions_to_finalize = NULL;
+  int ret = 0;
   bool there_is_a_deadline = false;
   bool shutdown = false;
 
@@ -183,11 +188,29 @@ void* scheduler_thread(void *ptr)
       s = sessions_to_finalize;
       sessions_to_finalize = sessions_to_finalize->next;
       if(!s->abort_session && s->callback) {
-        // s->callback(s->ctx);
         pthread_attr_t attr;
         pthread_t thread;
-        pthread_attr_init(&attr);
-        pthread_create(&thread, &attr, s->callback, s->ctx);
+        ret = pthread_attr_init(&attr);
+        if (ret != 0) {
+          // this is bad
+          out(stderr, "Could not create attributes for callback. ret = %d\n", ret);
+          panic();
+          break;
+        }
+        ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        if (ret != 0) {
+          // this is bad
+          out(stderr, "Could not set detatched attribute for callback. ret = %d\n", ret);
+          panic();
+          break;
+        }
+        ret = pthread_create(&thread, &attr, s->callback, s->ctx);
+        if (ret != 0) {
+          // this is bad
+          out(stderr, "Could not create thread for callback. ret = %d\n", ret);
+          panic();
+          break;
+        }
         pthread_attr_destroy(&attr);
       }
       free(s);

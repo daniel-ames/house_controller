@@ -1,5 +1,6 @@
 #include <time.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #define MEASUREMENT_FILE "measurement.txt"
 #define PLOT_FILE "plots.dat"
@@ -52,3 +53,7 @@ typedef struct {
   int samples;
   __u_long duration;
 } summary_t;
+
+
+#include "helpers.h"
+
