@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd $1
+
 ## create the graph
 gnuplot -e "set terminal png; set output 'out.png'; set yrange [0:20]; set xlabel 'samples'; set ylabel 'amps'; plot 'plots.dat' with lines notitle"
 
