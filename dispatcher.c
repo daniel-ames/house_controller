@@ -26,6 +26,12 @@ static key_value_t *kvp, *kvp_head, *kvp_prev;
 static void make_kvp(key_type_e type, char *str)
 {
   kvp = malloc(sizeof(*kvp));
+  if(!kvp) {
+    out(stderr, "Panic: could not malloc key_value_t!\n");
+    panic();
+    return;
+  }
+  
   kvp->next = NULL;
   kvp->key = type;
   switch(type) {
@@ -33,6 +39,8 @@ static void make_kvp(key_type_e type, char *str)
       kvp->value.u32 = strtoul(str, NULL, 10);
       break;
     case amps_type:
+    case ampsx_type:
+    case ampsy_type:
       kvp->value.dbl = strtod(str, NULL);
       break;
   }
