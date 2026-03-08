@@ -35,3 +35,22 @@ bool there_is_a_panic()
   pthread_mutex_unlock(&panic_flag_lock_m);
   return panic_status;
 }
+
+// make the time look like: 3:45:24 PM
+void time_my_way(struct tm * time, char * out)
+{
+  int hour = 0;
+  char meridian[3] = {0};
+  if (time->tm_hour > 12) {
+    meridian[0] = 'P';
+    hour = time->tm_hour - 12;
+  }
+  else {
+    meridian[0] = 'A';
+    hour = time->tm_hour == 0 ? 12 : time->tm_hour;
+  }
+
+  meridian[1] = 'M';
+
+  sprintf(out, "%02d:%02d:%02d %s", hour, time->tm_min, time->tm_sec, meridian);
+}

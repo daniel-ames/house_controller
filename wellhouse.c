@@ -16,19 +16,19 @@
 #include "logger.h"
 
 
-#define SP_INACTIVITY_TIMEOUT_MS   ((uint32_t)2000)
-
+#define WH_INACTIVITY_TIMEOUT_MS   ((uint32_t)2000)
 
 typedef struct sample {
-  float amps;
+  float amps_x;
+  float amps_y;
   time_t timestamp;
   int ordinal;
   struct sample *next;
-} sp_sample_t;
+} wh_sample_t;
 
 typedef struct {
-  sp_sample_t *head_sample;
-  sp_sample_t *tail_sample;
+  wh_sample_t *head_sample;
+  wh_sample_t *tail_sample;
   uint32_t number_of_samples;
   uint32_t session_id;
 } sewage_pump_ctx_t;
@@ -66,7 +66,7 @@ static bool try_claim_new_session()
 
 static void destroy_context(sewage_pump_ctx_t *ctx)
 {
-  sp_sample_t *next, *s = ctx->head_sample;
+  wh_sample_t *next, *s = ctx->head_sample;
   
   while(s) {
     next = s->next;
@@ -95,7 +95,7 @@ static void cleanup_working_dir(char *temp_dir)
 
 static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char *temp_dir)
 {
-  sp_sample_t *s = ctx->head_sample;
+  wh_sample_t *s = ctx->head_sample;
   if(!s) {
     out(stderr, "Panic: ctx->head_sample is NULL\n");
     panic();
@@ -126,12 +126,12 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char
     // // show it (optional)
     // printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
 
-    if(s->amps > max) max = s->amps;
-    if(s->amps < min) min = s->amps;
-    sum += s->amps;
-    count++;
-    end_time = (__u_long)s->timestamp;
-    fprintf(fp, "%d %.1f\n", count, s->amps);
+    // if(s->amps > max) max = s->amps;
+    // if(s->amps < min) min = s->amps;
+    // sum += s->amps;
+    // count++;
+    // end_time = (__u_long)s->timestamp;
+    // fprintf(fp, "%d %.1f\n", count, s->amps);
 
     // on to the next
     s = s->next;
@@ -225,10 +225,10 @@ static void* sewage_pump_callback(void *ptr)
 }
 
 
-void sewage_pump_handler(key_value_t *kvp)
+void wellhouse_handler(key_value_t *kvp)
 {
   time_t rawtime;
-  sp_sample_t *s;
+  wh_sample_t *s;
   static sewage_pump_ctx_t *ctx;
   struct tm * timeinfo;
   char *time_str;
@@ -239,7 +239,7 @@ void sewage_pump_handler(key_value_t *kvp)
 
   s = malloc(sizeof(*s));
   if(!s) {
-    out(stderr, "Panic: could not malloc sp_sample_t!\n");
+    out(stderr, "Panic: could not malloc wh_sample_t!\n");
     panic();
     return;
   }
@@ -259,7 +259,7 @@ void sewage_pump_handler(key_value_t *kvp)
     ctx->number_of_samples = 0;
     ctx->head_sample = s;
     ctx->tail_sample = NULL;
-    ctx->session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, ctx);
+    ctx->session_id = create_session(WH_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, ctx);
 
     if(!ctx->session_id) {
       // No session id was issued.
@@ -307,7 +307,7 @@ void sewage_pump_handler(key_value_t *kvp)
   for(key_value_t *k = kvp; k; k = k->next) {
     if (k->key == amps_type) {
       // This is what we came for
-      s->amps = k->value.dbl;
+      // s->amps = k->value.dbl;
       break;
     }
   }
