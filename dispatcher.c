@@ -99,16 +99,11 @@ void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
       sewage_pump_handler(kvp_head);
       break;
     case well_house_d:
-      // well_house_handler()
-      break;
     case driveway_d:
-      // driveway_handler()
-      break;
     case generator_d:
-      // generator_handler()
-      break;
     case unknown_d:
       // error path...
+      free_kvp_list(kvp_head);
       break;
   }
 
