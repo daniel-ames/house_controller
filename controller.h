@@ -17,6 +17,8 @@ typedef enum {
 typedef enum {
   device_type,
   amps_type,
+  ampsx_type,
+  ampsy_type,
   volts_type,
   psi_type,
   on_off_type,
