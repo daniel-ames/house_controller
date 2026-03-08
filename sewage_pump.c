@@ -150,7 +150,7 @@ static void* sewage_pump_callback(void *ptr)
   out(stdout, "  duration: %lu\n\n", summary.duration);
 
   // Put the highlights in the subject line
-  snprintf(subject, 256, "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
+  snprintf(subject, sizeof(subject), "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
 
   // write the results out to a file
   snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
