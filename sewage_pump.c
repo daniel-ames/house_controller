@@ -26,8 +26,36 @@ typedef struct {
   uint32_t session_id;
 } sewage_pump_ctx_t;
 
-static volatile bool session_active = false;
+static bool session_active = false;
+static pthread_mutex_t sewage_pump_lock_m = PTHREAD_MUTEX_INITIALIZER;
 
+// static bool is_session_active()
+// {
+//   pthread_mutex_lock(&sewage_pump_lock_m);
+//   bool active = session_active;
+//   pthread_mutex_unlock(&sewage_pump_lock_m);
+//   return active;
+// }
+
+static void set_session_active(bool active)
+{
+  pthread_mutex_lock(&sewage_pump_lock_m);
+  session_active = active;
+  pthread_mutex_unlock(&sewage_pump_lock_m);
+}
+
+static bool try_claim_new_session()
+{
+  pthread_mutex_lock(&sewage_pump_lock_m);
+  bool currently_active = session_active;
+  bool new_session_claimed = false;
+  if(!currently_active) {
+    session_active = true;
+    new_session_claimed = true;
+  }
+  pthread_mutex_unlock(&sewage_pump_lock_m);
+  return new_session_claimed;
+}
 
 // make the time look like: 3:45:24 PM
 void time_my_way(struct tm * time, char * out)
@@ -52,11 +80,11 @@ static void destroy_context(sewage_pump_ctx_t *ctx)
 {
   sample_t *next, *s = ctx->head_sample;
   
-  do {
+  while(s) {
     next = s->next;
     free(s);
     s = next;
-  } while(s != NULL);
+  }
   free(ctx);
 }
 
@@ -80,6 +108,11 @@ static void cleanup_working_dir(char *temp_dir)
 static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char *temp_dir)
 {
   sample_t *s = ctx->head_sample;
+  if(!s) {
+    out(stderr, "Panic: ctx->head_sample is NULL\n");
+    panic();
+    return;
+  }
   // struct tm * timeinfo;
   // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
   int count = 0;
@@ -91,8 +124,13 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char
   snprintf(plot_file_path, sizeof(plot_file_path), "%s/%s", temp_dir, PLOT_FILE);
 
   FILE *fp = fopen(plot_file_path, "w");
+  if(!fp) {
+    out(stderr, "Panic: Couldn't create \"%s\"\n", plot_file_path);
+    panic();
+    return;
+  }
 
-  do {
+  while(s) {
     // // parse the time
     // timeinfo = localtime(&s->timestamp);
     // time_my_way(timeinfo, time_str);
@@ -109,7 +147,7 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char
 
     // on to the next
     s = s->next;
-  } while(s);
+  }
 
   fflush(fp);
   fclose(fp);
@@ -125,7 +163,7 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char
 static void* sewage_pump_callback(void *ptr)
 {
   sewage_pump_ctx_t *ctx = (sewage_pump_ctx_t*)ptr;
-  session_active = false;
+  set_session_active(false);
 
   summary_t summary;
   char subject[256] = {0};
@@ -155,6 +193,11 @@ static void* sewage_pump_callback(void *ptr)
   // write the results out to a file
   snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
   FILE *fp = fopen(measurement_file_path, "w");
+  if(!fp) {
+    out(stderr, "Panic: Couldn't create \"%s\"\n", measurement_file_path);
+    panic();
+    return NULL;
+  }
   fprintf(fp, "To: danieladamames@gmail.com\r\n");
   fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
   fprintf(fp, "Subject: %s\r\n", subject);
@@ -207,15 +250,27 @@ void sewage_pump_handler(key_value_t *kvp)
   time(&rawtime);
 
   s = malloc(sizeof(*s));
+  if(!s) {
+    out(stderr, "Panic: could not malloc sample_t!\n");
+    panic();
+    return;
+  }
   memset(s, 0, sizeof(*s));
 
-  if(!session_active) {
+  if(try_claim_new_session()) {
     // This is a new session
-    session_active = true;
     ctx = malloc(sizeof(*ctx));
+    if(!ctx) {
+      out(stderr, "Panic: could not malloc sewage pump context!\n");
+      free_kvp_list(kvp);
+      free(s);
+      set_session_active(false);
+      panic();
+      return;
+    }
     ctx->number_of_samples = 0;
     ctx->head_sample = s;
-    ctx->tail_sample = s;
+    ctx->tail_sample = NULL;
     ctx->session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, ctx);
 
     if(!ctx->session_id) {
@@ -225,7 +280,7 @@ void sewage_pump_handler(key_value_t *kvp)
       free_kvp_list(kvp);
       free(s);
       free(ctx);
-      session_active = false;
+      set_session_active(false);
       return;
     }
     
@@ -253,7 +308,8 @@ void sewage_pump_handler(key_value_t *kvp)
     return;
   }
 
-  ctx->tail_sample->next = s;
+  if(ctx->tail_sample)
+    ctx->tail_sample->next = s;
 
   memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
   s->ordinal = ++ctx->number_of_samples;
