@@ -45,7 +45,7 @@ void time_my_way(struct tm * time, char * out)
 
   meridian[1] = 'M';
 
-  sprintf(out, "%d:%d:%d %s", hour, time->tm_min, time->tm_sec, meridian);
+  sprintf(out, "%02d:%02d:%02d %s", hour, time->tm_min, time->tm_sec, meridian);
 }
 
 static void destroy_context(sewage_pump_ctx_t *ctx)
@@ -215,7 +215,7 @@ void sewage_pump_handler(key_value_t *kvp)
     ctx = malloc(sizeof(*ctx));
     ctx->number_of_samples = 0;
     ctx->head_sample = s;
-    ctx->tail_sample = NULL;
+    ctx->tail_sample = s;
     ctx->session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, ctx);
 
     if(!ctx->session_id) {
@@ -253,8 +253,7 @@ void sewage_pump_handler(key_value_t *kvp)
     return;
   }
 
-  if (ctx->tail_sample)
-    ctx->tail_sample->next = s;
+  ctx->tail_sample->next = s;
 
   memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
   s->ordinal = ++ctx->number_of_samples;
