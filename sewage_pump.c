@@ -155,10 +155,10 @@ static void* sewage_pump_callback(void *ptr)
   set_session_active(false);
 
   summary_t summary;
-  char subject[256] = {0};
+  // char subject[256] = {0};
   char temp_dir[] = "_sp_XXXXXX";
-  char measurement_file_path[256] = {0};
-  char command[256] = {0};
+  // char measurement_file_path[256] = {0};
+  // char command[256] = {0};
   char influxdb_line_protocol[1024];
 
   // create a unique temp working directory
@@ -177,49 +177,49 @@ static void* sewage_pump_callback(void *ptr)
   out(stdout, "  samples : %d\n", summary.samples);
   out(stdout, "  duration: %lu\n\n", summary.duration);
 
-  // Put the highlights in the subject line
-  snprintf(subject, sizeof(subject), "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
+  // // Put the highlights in the subject line
+  // snprintf(subject, sizeof(subject), "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
 
   // The first part of the line protocol is tags. The second part (after the space) is fields.
   snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_run,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=ejector max_amps=%.1f,avg_amps=%.1f,duration_s=%ld,samples=%di",
                                 summary.max, summary.average, summary.duration, summary.samples);
   write_to_db(influxdb_line_protocol);
 
-  // write the results out to a file
-  snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
-  FILE *fp = fopen(measurement_file_path, "w");
-  if(!fp) {
-    out(stderr, "Panic: Couldn't create \"%s\"\n", measurement_file_path);
-    panic();
-    return NULL;
-  }
-  fprintf(fp, "To: danieladamames@gmail.com\r\n");
-  fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
-  fprintf(fp, "Subject: %s\r\n", subject);
-  fprintf(fp, "MIME-Version: 1.0\r\n");
-  fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "This is a multipart message in MIME format.\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "--xxxx38th parallel\r\n");
-  fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
-  fprintf(fp, "max/average/samples/duration: %.2f/%.2f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
-  fprintf(fp, "</p>\r\n");
-  fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "--xxxx38th parallel\r\n");
-  fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
-  fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
-  fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
-  fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
-  fprintf(fp, "Content-ID: <foo_bar>\r\n");
-  fprintf(fp, "\r\n");
-  fflush(fp);
-  fclose(fp);
+  // // write the results out to a file
+  // snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
+  // FILE *fp = fopen(measurement_file_path, "w");
+  // if(!fp) {
+  //   out(stderr, "Panic: Couldn't create \"%s\"\n", measurement_file_path);
+  //   panic();
+  //   return NULL;
+  // }
+  // fprintf(fp, "To: danieladamames@gmail.com\r\n");
+  // fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
+  // fprintf(fp, "Subject: %s\r\n", subject);
+  // fprintf(fp, "MIME-Version: 1.0\r\n");
+  // fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
+  // fprintf(fp, "\r\n");
+  // fprintf(fp, "This is a multipart message in MIME format.\r\n");
+  // fprintf(fp, "\r\n");
+  // fprintf(fp, "--xxxx38th parallel\r\n");
+  // fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
+  // fprintf(fp, "\r\n");
+  // fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
+  // fprintf(fp, "max/average/samples/duration: %.2f/%.2f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
+  // fprintf(fp, "</p>\r\n");
+  // fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
+  // fprintf(fp, "\r\n");
+  // fprintf(fp, "--xxxx38th parallel\r\n");
+  // fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
+  // fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
+  // fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
+  // fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
+  // fprintf(fp, "Content-ID: <foo_bar>\r\n");
+  // fprintf(fp, "\r\n");
+  // fflush(fp);
+  // fclose(fp);
 
-  snprintf(command, sizeof(command), "./sendit.sh %s sewage", temp_dir);
+  // snprintf(command, sizeof(command), "./sendit.sh %s sewage", temp_dir);
   // system(command);
 
   destroy_context(ctx);
