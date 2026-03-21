@@ -14,6 +14,7 @@
 #include "controller.h"
 #include "scheduler.h"
 #include "logger.h"
+#include "db.h"
 
 
 #define SP_INACTIVITY_TIMEOUT_MS   ((uint32_t)2000)
@@ -158,6 +159,7 @@ static void* sewage_pump_callback(void *ptr)
   char temp_dir[] = "_sp_XXXXXX";
   char measurement_file_path[256] = {0};
   char command[256] = {0};
+  char body[1024];
 
   // create a unique temp working directory
   if(!mkdtemp(temp_dir)) {
@@ -177,6 +179,9 @@ static void* sewage_pump_callback(void *ptr)
 
   // Put the highlights in the subject line
   snprintf(subject, sizeof(subject), "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
+
+  snprintf(body, sizeof(body), "pump_run,device=wellhouse-monitor-1,site=wellhouse,subsystem=well_pump,pump_type=well max_amps=%.1f,avg_amps=%.1f,duration_s=%ld", summary.max, summary.average, summary.duration);
+  write_to_db(body);
 
   // write the results out to a file
   snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
@@ -213,7 +218,7 @@ static void* sewage_pump_callback(void *ptr)
   fclose(fp);
 
   snprintf(command, sizeof(command), "./sendit.sh %s sewage", temp_dir);
-  system(command);
+  // system(command);
 
   destroy_context(ctx);
 
