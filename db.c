@@ -3,7 +3,7 @@
 #include <curl/curl.h>
 
 
-void write_to_db(char *body)
+void write_to_db(char *influxdb_line_protocol)
 {
   const char *db_url = "http://optiplex:8086";
   const char *org = "house";
@@ -30,8 +30,8 @@ void write_to_db(char *body)
 
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(body));
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, influxdb_line_protocol);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(influxdb_line_protocol));
 
   CURLcode result = curl_easy_perform(curl);
   if (result != CURLE_OK)
