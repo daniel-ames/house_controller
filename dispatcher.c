@@ -16,14 +16,22 @@
 
 #define DEVICE_TOKEN_LEN  4   // "dev="
 #define AMPS_TOKEN_LEN    5   // "amps="
+#define AMPSn_TOKEN_LEN    6   // "ampsn="
 
 void sewage_pump_handler(key_value_t *kvp);
+void wellhouse_handler(key_value_t *kvp);
 
 static key_value_t *kvp, *kvp_head, *kvp_prev;
 
 static void make_kvp(key_type_e type, char *str)
 {
   kvp = malloc(sizeof(*kvp));
+  if(!kvp) {
+    out(stderr, "Panic: could not malloc key_value_t!\n");
+    panic();
+    return;
+  }
+  
   kvp->next = NULL;
   kvp->key = type;
   switch(type) {
@@ -31,6 +39,8 @@ static void make_kvp(key_type_e type, char *str)
       kvp->value.u32 = strtoul(str, NULL, 10);
       break;
     case amps_type:
+    case ampsx_type:
+    case ampsy_type:
       kvp->value.dbl = strtod(str, NULL);
       break;
   }
@@ -77,7 +87,6 @@ void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
       dev_id = kvp_prev->value.u32;
       continue;
     }
-
     if(!strncmp(cursor, "amps=", AMPS_TOKEN_LEN)) {
       // amps
       if(!cursor[AMPS_TOKEN_LEN]) {
@@ -87,6 +96,26 @@ void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
         break;
       }
       make_kvp(amps_type, &cursor[AMPS_TOKEN_LEN]);
+    }
+    if(!strncmp(cursor, "ampsx=", AMPSn_TOKEN_LEN)) {
+      // amps_x
+      if(!cursor[AMPSn_TOKEN_LEN]) {
+        // value is blank. this should never happen
+        msg_is_malformed(msg, peer_ip_address);
+        dev_id = unknown_d;
+        break;
+      }
+      make_kvp(ampsx_type, &cursor[AMPSn_TOKEN_LEN]);
+    }
+    if(!strncmp(cursor, "ampsy=", AMPSn_TOKEN_LEN)) {
+      // amps_y
+      if(!cursor[AMPSn_TOKEN_LEN]) {
+        // value is blank. this should never happen
+        msg_is_malformed(msg, peer_ip_address);
+        dev_id = unknown_d;
+        break;
+      }
+      make_kvp(ampsy_type, &cursor[AMPSn_TOKEN_LEN]);
     }
 
   } while( (cursor = strtok_r(NULL, " ", &saveptr)) );
@@ -101,6 +130,8 @@ void dispatch(const char *msg, uint32_t length, char *peer_ip_address)
       sewage_pump_handler(kvp_head);
       break;
     case well_house_d:
+      wellhouse_handler(kvp_head);
+      break;
     case driveway_d:
     case generator_d:
     case unknown_d:
