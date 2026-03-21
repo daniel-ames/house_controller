@@ -17,6 +17,8 @@ typedef enum {
 typedef enum {
   device_type,
   amps_type,
+  ampsx_type,
+  ampsy_type,
   volts_type,
   psi_type,
   on_off_type,
@@ -38,13 +40,6 @@ typedef struct key_value {
   } value;
   struct key_value* next;
 } key_value_t;
-
-typedef struct sample {
-  float amps;
-  time_t timestamp;
-  int ordinal;
-  struct sample *next;
-} sample_t;
 
 typedef struct {
   float average;
