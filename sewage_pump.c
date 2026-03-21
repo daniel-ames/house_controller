@@ -159,7 +159,7 @@ static void* sewage_pump_callback(void *ptr)
   char temp_dir[] = "_sp_XXXXXX";
   char measurement_file_path[256] = {0};
   char command[256] = {0};
-  char body[1024];
+  char influxdb_line_protocol[1024];
 
   // create a unique temp working directory
   if(!mkdtemp(temp_dir)) {
@@ -180,8 +180,10 @@ static void* sewage_pump_callback(void *ptr)
   // Put the highlights in the subject line
   snprintf(subject, sizeof(subject), "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
 
-  snprintf(body, sizeof(body), "pump_run,device=wellhouse-monitor-1,site=wellhouse,subsystem=well_pump,pump_type=well max_amps=%.1f,avg_amps=%.1f,duration_s=%ld", summary.max, summary.average, summary.duration);
-  write_to_db(body);
+  // The first part of the line protocol is tags. The second part (after the space) is fields.
+  snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_run,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=ejector max_amps=%.1f,avg_amps=%.1f,duration_s=%ld,samples=%di",
+                                summary.max, summary.average, summary.duration, summary.samples);
+  write_to_db(influxdb_line_protocol);
 
   // write the results out to a file
   snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
