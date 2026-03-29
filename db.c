@@ -39,7 +39,7 @@ void write_to_db(char *influxdb_line_protocol)
   else {
     long http_ret = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_ret);
-    printf("HTTP response: %ld\n", http_ret);
+    // printf("HTTP response: %ld\n", http_ret);
   }
 
   curl_slist_free_all(hdrs);

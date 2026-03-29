@@ -248,7 +248,7 @@ void wellhouse_handler(key_value_t *kvp)
 
   s->mono_time_ns = mono_time_ns;
   s->wall_time_ns = wall_time_ns;
-  s->elapsed_ms = (uint32_t)((mono_time_ns - ctx->start_ns) / 1000000ull);
+  s->elapsed_ms = (uint32_t)((wall_time_ns - ctx->start_ns) / 1000000ull);
   memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
 
   if(ctx->tail_sample)
