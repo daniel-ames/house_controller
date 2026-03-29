@@ -97,7 +97,7 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx)
     count++;
     end_time = (__u_long)s->timestamp;
     // fprintf(fp, "%d %.1f\n", count, s->amps);
-    snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_sample,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=well amps=%.1f,elapsed_ms=%ui,ordinal=%ui %lu",
+    snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_sample,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=ejector amps=%.1f,elapsed_ms=%ui,ordinal=%ui %lu",
                                 s->amps, s->elapsed_ms, s->ordinal, s->wall_time_ns);
     write_to_db(influxdb_line_protocol);
 
