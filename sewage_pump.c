@@ -23,6 +23,9 @@
 typedef struct sample {
   float amps;
   time_t timestamp;
+  uint64_t mono_time_ns;
+  uint64_t wall_time_ns;
+  uint32_t elapsed_ms;
   int ordinal;
   struct sample *next;
 } sp_sample_t;
@@ -30,6 +33,8 @@ typedef struct sample {
 typedef struct {
   sp_sample_t *head_sample;
   sp_sample_t *tail_sample;
+  uint64_t start_ns;
+  uint64_t stop_ns;
   uint32_t number_of_samples;
   uint32_t session_id;
 } sewage_pump_ctx_t;
@@ -37,13 +42,6 @@ typedef struct {
 static bool session_active = false;
 static pthread_mutex_t sewage_pump_lock_m = PTHREAD_MUTEX_INITIALIZER;
 
-// static bool is_session_active()
-// {
-//   pthread_mutex_lock(&sewage_pump_lock_m);
-//   bool active = session_active;
-//   pthread_mutex_unlock(&sewage_pump_lock_m);
-//   return active;
-// }
 
 static void set_session_active(bool active)
 {
@@ -77,24 +75,7 @@ static void destroy_context(sewage_pump_ctx_t *ctx)
   free(ctx);
 }
 
-static void cleanup_working_dir(char *temp_dir)
-{
-  char file_path[256] = {0};
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, PLOT_FILE);
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "email");
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.png");
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.b64");
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s", temp_dir);
-  rmdir(file_path);
-}
-
-static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char *temp_dir)
+static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx)
 {
   sp_sample_t *s = ctx->head_sample;
   if(!s) {
@@ -102,44 +83,27 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx, char
     panic();
     return;
   }
-  // struct tm * timeinfo;
-  // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
   int count = 0;
   float min = 1000.0f, max = 0.0f, sum = 0.0f;
-  char plot_file_path[256] = {0};
+  char influxdb_line_protocol[1024];
 
   __u_long start_time = (__u_long)s->timestamp, end_time;
 
-  snprintf(plot_file_path, sizeof(plot_file_path), "%s/%s", temp_dir, PLOT_FILE);
-
-  FILE *fp = fopen(plot_file_path, "w");
-  if(!fp) {
-    out(stderr, "Panic: Couldn't create \"%s\"\n", plot_file_path);
-    panic();
-    return;
-  }
 
   while(s) {
-    // // parse the time
-    // timeinfo = localtime(&s->timestamp);
-    // time_my_way(timeinfo, time_str);
-
-    // // show it (optional)
-    // printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
-
     if(s->amps > max) max = s->amps;
     if(s->amps < min) min = s->amps;
     sum += s->amps;
     count++;
     end_time = (__u_long)s->timestamp;
-    fprintf(fp, "%d %.1f\n", count, s->amps);
+    // fprintf(fp, "%d %.1f\n", count, s->amps);
+    snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_sample,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=well amps=%.1f,elapsed_ms=%ui,ordinal=%ui %lu",
+                                s->amps, s->elapsed_ms, s->ordinal, s->wall_time_ns);
+    write_to_db(influxdb_line_protocol);
 
     // on to the next
     s = s->next;
   }
-
-  fflush(fp);
-  fclose(fp);
 
   summary->min = min;
   summary->max = max;
@@ -154,21 +118,14 @@ static void* sewage_pump_callback(void *ptr)
   sewage_pump_ctx_t *ctx = (sewage_pump_ctx_t*)ptr;
   set_session_active(false);
 
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ctx->stop_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+
   summary_t summary;
-  // char subject[256] = {0};
-  char temp_dir[] = "_sp_XXXXXX";
-  // char measurement_file_path[256] = {0};
-  // char command[256] = {0};
   char influxdb_line_protocol[1024];
 
-  // create a unique temp working directory
-  if(!mkdtemp(temp_dir)) {
-    out(stderr, "Panic: Couldn't create temp dir \"%s\". %d: %s\n", temp_dir, errno, strerror(errno));
-    panic();
-    return NULL;
-  }
-
-  compile_measurement(&summary, ctx, temp_dir);
+  compile_measurement(&summary, ctx);
 
   out(stdout, "\nSummary:\n");
   out(stdout, "  min     : %f\n", summary.min);
@@ -177,54 +134,12 @@ static void* sewage_pump_callback(void *ptr)
   out(stdout, "  samples : %d\n", summary.samples);
   out(stdout, "  duration: %lu\n\n", summary.duration);
 
-  // // Put the highlights in the subject line
-  // snprintf(subject, sizeof(subject), "Flush - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
-
   // The first part of the line protocol is tags. The second part (after the space) is fields.
   snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_run,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=ejector max_amps=%.1f,avg_amps=%.1f,duration_s=%ld,samples=%di",
                                 summary.max, summary.average, summary.duration, summary.samples);
   write_to_db(influxdb_line_protocol);
 
-  // // write the results out to a file
-  // snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
-  // FILE *fp = fopen(measurement_file_path, "w");
-  // if(!fp) {
-  //   out(stderr, "Panic: Couldn't create \"%s\"\n", measurement_file_path);
-  //   panic();
-  //   return NULL;
-  // }
-  // fprintf(fp, "To: danieladamames@gmail.com\r\n");
-  // fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
-  // fprintf(fp, "Subject: %s\r\n", subject);
-  // fprintf(fp, "MIME-Version: 1.0\r\n");
-  // fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
-  // fprintf(fp, "\r\n");
-  // fprintf(fp, "This is a multipart message in MIME format.\r\n");
-  // fprintf(fp, "\r\n");
-  // fprintf(fp, "--xxxx38th parallel\r\n");
-  // fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
-  // fprintf(fp, "\r\n");
-  // fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
-  // fprintf(fp, "max/average/samples/duration: %.2f/%.2f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
-  // fprintf(fp, "</p>\r\n");
-  // fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
-  // fprintf(fp, "\r\n");
-  // fprintf(fp, "--xxxx38th parallel\r\n");
-  // fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
-  // fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
-  // fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
-  // fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
-  // fprintf(fp, "Content-ID: <foo_bar>\r\n");
-  // fprintf(fp, "\r\n");
-  // fflush(fp);
-  // fclose(fp);
-
-  // snprintf(command, sizeof(command), "./sendit.sh %s sewage", temp_dir);
-  // system(command);
-
   destroy_context(ctx);
-
-  cleanup_working_dir(temp_dir);
 
   // This function must return a void* to match the signture for pthread_create().
   // Return null so gcc doesn't complain.
@@ -235,6 +150,8 @@ static void* sewage_pump_callback(void *ptr)
 void sewage_pump_handler(key_value_t *kvp)
 {
   time_t rawtime;
+  struct timespec ts;
+  uint64_t mono_time_ns, wall_time_ns;
   sp_sample_t *s;
   static sewage_pump_ctx_t *ctx;
   struct tm * timeinfo;
@@ -243,6 +160,10 @@ void sewage_pump_handler(key_value_t *kvp)
 
   // get time
   time(&rawtime);
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  mono_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  wall_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
 
   s = malloc(sizeof(*s));
   if(!s) {
@@ -267,6 +188,7 @@ void sewage_pump_handler(key_value_t *kvp)
     ctx->head_sample = s;
     ctx->tail_sample = NULL;
     ctx->session_id = create_session(SP_INACTIVITY_TIMEOUT_MS, sewage_pump_callback, ctx);
+    ctx->start_ns = wall_time_ns;
 
     if(!ctx->session_id) {
       // No session id was issued.
@@ -303,10 +225,14 @@ void sewage_pump_handler(key_value_t *kvp)
     return;
   }
 
+  s->mono_time_ns = mono_time_ns;
+  s->wall_time_ns = wall_time_ns;
+  s->elapsed_ms = (uint32_t)((wall_time_ns - ctx->start_ns) / 1000000ull);
+  memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
+
   if(ctx->tail_sample)
     ctx->tail_sample->next = s;
 
-  memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
   s->ordinal = ++ctx->number_of_samples;
   s->next = NULL;
 

@@ -74,22 +74,6 @@ static void destroy_context(wellhouse_ctx_t *ctx)
   free(ctx);
 }
 
-// static void cleanup_working_dir(char *temp_dir)
-// {
-//   char file_path[256] = {0};
-//   snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
-//   unlink(file_path);
-//   snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, PLOT_FILE);
-//   unlink(file_path);
-//   snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "email");
-//   unlink(file_path);
-//   snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.png");
-//   unlink(file_path);
-//   snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.b64");
-//   unlink(file_path);
-//   snprintf(file_path, sizeof(file_path), "%s", temp_dir);
-//   rmdir(file_path);
-// }
 
 static void compile_measurement(summary_t *summary, wellhouse_ctx_t *ctx)
 {
