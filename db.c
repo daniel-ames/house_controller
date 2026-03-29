@@ -2,13 +2,15 @@
 #include <string.h>
 #include <curl/curl.h>
 
+#include "street_cred.h"
+
 
 void write_to_db(char *influxdb_line_protocol)
 {
   const char *db_url = "http://optiplex:8086";
   const char *org = "house";
   const char *bucket = "house_controller";
-  const char *api_token = "nHh-S1f5Wlz_4LvsS0q9sBxsFR3u5UsTEnZDEgXuTn4JWn-8VESGJ-aW5yvYRY4vEXWb8ApZFW6qA9G3dicpWA==";
+  // const char *api_token = "nope";  <--- defined in unversioned street_cred.h
 
   char url[512];
   snprintf(url, sizeof(url), "%s/api/v2/write?org=%s&bucket=%s&precision=ns", db_url, org, bucket);
@@ -38,8 +40,14 @@ void write_to_db(char *influxdb_line_protocol)
     fprintf(stderr, "curl perform failed: %s\n", curl_easy_strerror(result));
   else {
     long http_ret = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_ret);
-    // printf("HTTP response: %ld\n", http_ret);
+    result = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_ret);
+    if (result != CURLE_OK)
+      fprintf(stderr, "curl_easy_getinfo failed: %s\n", curl_easy_strerror(result));
+    else {
+      if(http_ret < 200 && http_ret >= 300) {
+        fprintf(stderr, "Influx write failed: HTTP %ld\n", http_ret);
+      }
+    }
   }
 
   curl_slist_free_all(hdrs);
