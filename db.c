@@ -11,7 +11,7 @@ void write_to_db(char *influxdb_line_protocol)
   const char *api_token = "***redacted***";
 
   char url[512];
-  snprintf(url, sizeof(url), "%s/api/v2/write?org=%s&bucket=%s&precision=s", db_url, org, bucket);
+  snprintf(url, sizeof(url), "%s/api/v2/write?org=%s&bucket=%s&precision=ns", db_url, org, bucket);
 
   CURL *curl = curl_easy_init();
   if (!curl) {
