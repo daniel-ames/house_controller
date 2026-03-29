@@ -44,7 +44,7 @@ void write_to_db(char *influxdb_line_protocol)
     if (result != CURLE_OK)
       fprintf(stderr, "curl_easy_getinfo failed: %s\n", curl_easy_strerror(result));
     else {
-      if(http_ret < 200 && http_ret >= 300) {
+      if(http_ret < 200 || http_ret >= 300) {
         fprintf(stderr, "Influx write failed: HTTP %ld\n", http_ret);
       }
     }
