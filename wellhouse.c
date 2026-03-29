@@ -14,6 +14,7 @@
 #include "controller.h"
 #include "scheduler.h"
 #include "logger.h"
+#include "db.h"
 
 
 #define WH_INACTIVITY_TIMEOUT_MS   ((uint32_t)2000)
@@ -22,6 +23,9 @@ typedef struct sample {
   float amps_x;
   float amps_y;
   time_t timestamp;
+  uint64_t mono_time_ns;
+  uint64_t wall_time_ns;
+  uint32_t elapsed_ms;
   int ordinal;
   struct sample *next;
 } wh_sample_t;
@@ -29,20 +33,14 @@ typedef struct sample {
 typedef struct {
   wh_sample_t *head_sample;
   wh_sample_t *tail_sample;
+  uint64_t start_ns;
+  uint64_t stop_ns;
   uint32_t number_of_samples;
   uint32_t session_id;
 } wellhouse_ctx_t;
 
 static bool session_active = false;
 static pthread_mutex_t wellhouse_lock_m = PTHREAD_MUTEX_INITIALIZER;
-
-// static bool is_session_active()
-// {
-//   pthread_mutex_lock(&wellhouse_lock_m);
-//   bool active = session_active;
-//   pthread_mutex_unlock(&wellhouse_lock_m);
-//   return active;
-// }
 
 static void set_session_active(bool active)
 {
@@ -76,24 +74,8 @@ static void destroy_context(wellhouse_ctx_t *ctx)
   free(ctx);
 }
 
-static void cleanup_working_dir(char *temp_dir)
-{
-  char file_path[256] = {0};
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, PLOT_FILE);
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "email");
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.png");
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s/%s", temp_dir, "out.b64");
-  unlink(file_path);
-  snprintf(file_path, sizeof(file_path), "%s", temp_dir);
-  rmdir(file_path);
-}
 
-static void compile_measurement(summary_t *summary, wellhouse_ctx_t *ctx, char *temp_dir)
+static void compile_measurement(summary_t *summary, wellhouse_ctx_t *ctx)
 {
   wh_sample_t *s = ctx->head_sample;
   if(!s) {
@@ -101,32 +83,14 @@ static void compile_measurement(summary_t *summary, wellhouse_ctx_t *ctx, char *
     panic();
     return;
   }
-  // struct tm * timeinfo;
-  // char time_str[16] = {0};  //12:44:55 AM\0\0\0\0
   int count = 0;
   float min_x = 1000.0f, max_x = 0.0f, sum_x = 0.0f;
   float min_y = 1000.0f, max_y = 0.0f, sum_y = 0.0f;
-  char plot_file_path[256] = {0};
+  char influxdb_line_protocol[1024];
 
   __u_long start_time = (__u_long)s->timestamp, end_time;
 
-  snprintf(plot_file_path, sizeof(plot_file_path), "%s/%s", temp_dir, PLOT_FILE);
-
-  FILE *fp = fopen(plot_file_path, "w");
-  if(!fp) {
-    out(stderr, "Panic: Couldn't create \"%s\"\n", plot_file_path);
-    panic();
-    return;
-  }
-
   while(s) {
-    // // parse the time
-    // timeinfo = localtime(&s->timestamp);
-    // time_my_way(timeinfo, time_str);
-
-    // // show it (optional)
-    // printf("list item [%d], time: %s, amps: %f\n", s->ordinal, time_str, s->amps);
-
     if(s->amps_x > max_x) max_x = s->amps_x;
     if(s->amps_x < min_x) min_x = s->amps_x;
     sum_x += s->amps_x;
@@ -138,14 +102,13 @@ static void compile_measurement(summary_t *summary, wellhouse_ctx_t *ctx, char *
     count++;
     end_time = (__u_long)s->timestamp;
 
-    fprintf(fp, "%d %.1f %.1f\n", count, s->amps_x, s->amps_y);
+    snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_sample,device=wellhouse-monitor-1,site=wellhouse,subsystem=well_pump,pump_type=well amps_x=%.1f,amps_y=%.1f,elapsed_ms=%ui,ordinal=%ui %lu",
+                                s->amps_x, s->amps_y, s->elapsed_ms, s->ordinal, s->wall_time_ns);
+    write_to_db(influxdb_line_protocol);
 
     // on to the next
     s = s->next;
   }
-
-  fflush(fp);
-  fclose(fp);
 
   summary->min = min_x < min_y ? min_x : min_y;
   summary->max = max_x > max_y ? max_x : max_y;
@@ -160,20 +123,14 @@ static void* wellhouse_callback(void *ptr)
   wellhouse_ctx_t *ctx = (wellhouse_ctx_t*)ptr;
   set_session_active(false);
 
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ctx->stop_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+
   summary_t summary;
-  char subject[256] = {0};
-  char temp_dir[] = "_sp_XXXXXX";
-  char measurement_file_path[256] = {0};
-  char command[256] = {0};
+  char influxdb_line_protocol[1024];
 
-  // create a unique temp working directory
-  if(!mkdtemp(temp_dir)) {
-    out(stderr, "Panic: Couldn't create temp dir \"%s\". %d: %s\n", temp_dir, errno, strerror(errno));
-    panic();
-    return NULL;
-  }
-
-  compile_measurement(&summary, ctx, temp_dir);
+  compile_measurement(&summary, ctx);
 
   out(stdout, "\nSummary:\n");
   out(stdout, "  min     : %f\n", summary.min);
@@ -182,51 +139,12 @@ static void* wellhouse_callback(void *ptr)
   out(stdout, "  samples : %d\n", summary.samples);
   out(stdout, "  duration: %lu\n\n", summary.duration);
 
-  // Put the highlights in the subject line
-  snprintf(subject, sizeof(subject), "Well Pump - M:%.1f, A:%.1f, D:%ld", summary.max, summary.average, summary.duration);
-
-  // write the results out to a file
-  snprintf(measurement_file_path, sizeof(measurement_file_path), "%s/%s", temp_dir, MEASUREMENT_FILE);
-  FILE *fp = fopen(measurement_file_path, "w");
-  if(!fp) {
-    out(stderr, "Panic: Couldn't create \"%s\"\n", measurement_file_path);
-    panic();
-    return NULL;
-  }
-  fprintf(fp, "To: danieladamames@gmail.com\r\n");
-  fprintf(fp, "From: ameshousecontroller@gmail.com\r\n");
-  fprintf(fp, "Subject: %s\r\n", subject);
-  fprintf(fp, "MIME-Version: 1.0\r\n");
-  fprintf(fp, "Content-Type: multipart/related; boundary=\"xxxx38th parallel\"\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "This is a multipart message in MIME format.\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "--xxxx38th parallel\r\n");
-  fprintf(fp, "Content-Type: text/html; charset=\"UTF-8\"\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "<p style=\"white-space: pre;\">\r\n");
-  fprintf(fp, "max/average/samples/duration: %.2f/%.2f/%d/%lu\r\n", summary.max, summary.average, summary.samples, summary.duration);
-  fprintf(fp, "</p>\r\n");
-  fprintf(fp, "<img src=\"cid:foo_bar\" alt=\"graph\">\r\n");
-  fprintf(fp, "\r\n");
-  fprintf(fp, "--xxxx38th parallel\r\n");
-  fprintf(fp, "Content-Type: image/png; name=\"pic.png\"\r\n");
-  fprintf(fp, "Content-Disposition: attachment; filename=\"pic.png\"\r\n");
-  fprintf(fp, "Content-Transfer-Encoding: base64\r\n");
-  fprintf(fp, "X-Attachment-Id: foo_bar\r\n");
-  fprintf(fp, "Content-ID: <foo_bar>\r\n");
-  fprintf(fp, "\r\n");
-  fflush(fp);
-  fclose(fp);
-
-  // TODO: sendit.sh will not handle a 2 column plots file.
-  // Sprocket, don't let me forget this.
-  snprintf(command, sizeof(command), "./sendit.sh %s wellhouse", temp_dir);
-  system(command);
+  // The first part of the line protocol is tags. The second part (after the space) is fields.
+  snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_run,device=wellhouse-monitor-1,site=wellhouse,subsystem=well_pump,pump_type=well max_amps=%.1f,avg_amps=%.1f,duration_s=%ld,samples=%di,start_ns=%lui,stop_ns=%lui",
+                                summary.max, summary.average, summary.duration, summary.samples, ctx->start_ns, ctx->stop_ns);
+  write_to_db(influxdb_line_protocol);
 
   destroy_context(ctx);
-
-  cleanup_working_dir(temp_dir);
 
   // This function must return a void* to match the signture for pthread_create().
   // Return null so gcc doesn't complain.
@@ -237,6 +155,8 @@ static void* wellhouse_callback(void *ptr)
 void wellhouse_handler(key_value_t *kvp)
 {
   time_t rawtime;
+  struct timespec ts;
+  uint64_t mono_time_ns, wall_time_ns;
   wh_sample_t *s;
   static wellhouse_ctx_t *ctx;
   struct tm * timeinfo;
@@ -245,6 +165,10 @@ void wellhouse_handler(key_value_t *kvp)
 
   // get time
   time(&rawtime);
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  mono_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  wall_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
 
   s = malloc(sizeof(*s));
   if(!s) {
@@ -269,6 +193,7 @@ void wellhouse_handler(key_value_t *kvp)
     ctx->head_sample = s;
     ctx->tail_sample = NULL;
     ctx->session_id = create_session(WH_INACTIVITY_TIMEOUT_MS, wellhouse_callback, ctx);
+    ctx->start_ns = wall_time_ns;
 
     if(!ctx->session_id) {
       // No session id was issued.
@@ -305,10 +230,14 @@ void wellhouse_handler(key_value_t *kvp)
     return;
   }
 
+  s->mono_time_ns = mono_time_ns;
+  s->wall_time_ns = wall_time_ns;
+  s->elapsed_ms = (uint32_t)((wall_time_ns - ctx->start_ns) / 1000000ull);
+  memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
+
   if(ctx->tail_sample)
     ctx->tail_sample->next = s;
 
-  memcpy(&s->timestamp, &rawtime, sizeof(rawtime));
   s->ordinal = ++ctx->number_of_samples;
   s->next = NULL;
 

@@ -43,6 +43,15 @@ static void make_kvp(key_type_e type, char *str)
     case ampsy_type:
       kvp->value.dbl = strtod(str, NULL);
       break;
+    case volts_type:
+    case psi_type:
+    case on_off_type:
+    case epoch_type:
+    case us_type:
+    case ms_type:
+    case seconds_type:
+    case string_type:
+      break;
   }
 
   if(kvp_prev) kvp_prev->next = kvp;

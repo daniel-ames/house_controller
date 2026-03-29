@@ -14,7 +14,6 @@ FILE *fp = NULL;
 
 static void init_logger()
 {
-    int ret = 0;
     fp = fopen(LOG_FILE, "a");
     if (fp == NULL)
         fprintf(stderr, "No log file \"%s\", and I couldn't create one either! Error: %s\n", LOG_FILE, strerror(errno));
@@ -30,7 +29,7 @@ void logger_handle_sig()
 void out(FILE *stream, char *str, ...)
 {
     va_list args_for_stream;
-    va_list args_for_log;
+    // va_list args_for_log;
     va_list args_for_syslog;
 
     // if (fp == NULL)
