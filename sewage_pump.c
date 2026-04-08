@@ -135,8 +135,8 @@ static void* sewage_pump_callback(void *ptr)
   out(stdout, "  duration: %lu\n\n", summary.duration);
 
   // The first part of the line protocol is tags. The second part (after the space) is fields.
-  snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_run,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=ejector max_amps=%.1f,avg_amps=%.1f,duration_s=%ld,samples=%di",
-                                summary.max, summary.average, summary.duration, summary.samples);
+  snprintf(influxdb_line_protocol, sizeof(influxdb_line_protocol), "pump_run,device=sewage_pump-monitor-1,site=underhouse,subsystem=sewage_pump,pump_type=ejector max_amps=%.1f,avg_amps=%.1f,duration_s=%ld,samples=%di,start_ns=%lui,stop_ns=%lui",
+                                summary.max, summary.average, summary.duration, summary.samples, ctx->start_ns, ctx->stop_ns);
   write_to_db(influxdb_line_protocol);
 
   destroy_context(ctx);
