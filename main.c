@@ -43,6 +43,7 @@ extern pthread_mutex_t scheduler_lock_m;
 
 void dispatch(const char *msg, uint32_t length, char *peer_ip_address);
 int innit_scheduler();
+void init_sewage_pump();
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
@@ -135,6 +136,8 @@ int main ()
       out(stderr, "Failed to kick off the scheduler. Something in innit_scheduler() failed. ret = %d\n", ret);
       return ret;
   }
+
+  init_sewage_pump();
 
   struct pollfd polls[] =
   {

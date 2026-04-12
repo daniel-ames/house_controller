@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 #include "controller.h"
 
@@ -54,4 +55,18 @@ void time_my_way(struct tm * time, char * out)
   meridian[1] = 'M';
 
   sprintf(out, "%02d:%02d:%02d %s", hour, time->tm_min, time->tm_sec, meridian);
+}
+
+uint64_t get_mono_time_ns()
+{
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+uint64_t get_wall_time_ns()
+{
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }

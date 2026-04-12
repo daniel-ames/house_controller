@@ -14,11 +14,18 @@
 #include "controller.h"
 #include "scheduler.h"
 #include "logger.h"
+#include "helpers.h"
 #include "db.h"
 
 
 #define SP_INACTIVITY_TIMEOUT_MS   ((uint32_t)2000)
 
+static pthread_mutex_t sewage_heartbeat_lock_m = PTHREAD_MUTEX_INITIALIZER;
+// pthread_cond_t sewage_heartbeat_cv;
+static const uint64_t flatline_ns = 3ul * 1000000000ul;           // 3 seconds
+static const uint64_t alert_blackout_ns = 1800ul * 1000000000ul;  // 30 minutes
+static uint64_t last_heartbeat_ns = 0;
+// static struct timespec ekg_period_ts;
 
 typedef struct sample {
   float amps;
@@ -42,6 +49,34 @@ typedef struct {
 static bool session_active = false;
 static pthread_mutex_t sewage_pump_lock_m = PTHREAD_MUTEX_INITIALIZER;
 
+void* ekg(void *ptr);
+
+
+void init_sewage_pump()
+{
+  pthread_attr_t attr;
+  pthread_t thread;
+  int ret = pthread_attr_init(&attr);
+  if (ret != 0) {
+    // this is bad
+    out(stderr, "Could not create attributes for sewage pump heartbeat thread. ret = %d\n", ret);
+    panic();
+  }
+  ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+  if (ret != 0) {
+    // this is bad
+    out(stderr, "Could not set detatched attribute for sewage pump heartbeat thread. ret = %d\n", ret);
+    panic();
+  }
+  ret = pthread_create(&thread, &attr, ekg, NULL);
+  if (ret != 0) {
+    // this is bad
+    out(stderr, "Could not create thread for sewage pump heartbeat thread. ret = %d\n", ret);
+    panic();
+  }
+  pthread_attr_destroy(&attr);
+
+}
 
 static void set_session_active(bool active)
 {
@@ -83,6 +118,7 @@ static void compile_measurement(summary_t *summary, sewage_pump_ctx_t *ctx)
     panic();
     return;
   }
+
   int count = 0;
   float min = 1000.0f, max = 0.0f, sum = 0.0f;
   char influxdb_line_protocol[1024];
@@ -118,9 +154,7 @@ static void* sewage_pump_callback(void *ptr)
   sewage_pump_ctx_t *ctx = (sewage_pump_ctx_t*)ptr;
   set_session_active(false);
 
-  struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  ctx->stop_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+  ctx->stop_ns = get_wall_time_ns();
 
   summary_t summary;
   char influxdb_line_protocol[1024];
@@ -147,6 +181,54 @@ static void* sewage_pump_callback(void *ptr)
 }
 
 
+static bool can_send_alert(uint64_t mono_time_ns)
+{
+  bool can_send = false;
+  static uint64_t last_alert_ns = 0;
+
+  if (last_alert_ns) {
+    if (mono_time_ns - last_alert_ns > alert_blackout_ns) {
+      // alert blackout expired
+      last_alert_ns = mono_time_ns;
+      can_send = true;
+    }
+  } else {
+    last_alert_ns = mono_time_ns;
+    can_send = true;
+  }
+
+  return can_send;
+}
+
+// To be spawned asynchronously from the main thread
+void* ekg(void *ptr)
+{
+  (void)ptr;
+  uint64_t mono_time_ns, last;
+  struct timespec ekg_period_ts = {.tv_sec = 1, .tv_nsec = 0};
+
+  while(1) {
+    pthread_mutex_lock(&sewage_heartbeat_lock_m);
+    last = last_heartbeat_ns;
+    pthread_mutex_unlock(&sewage_heartbeat_lock_m);
+    mono_time_ns = get_mono_time_ns();
+    
+    if (last) {
+      if ( mono_time_ns - last > flatline_ns) {
+        // The device is dead. Do something.
+        if (can_send_alert(mono_time_ns)) {
+          // send alert
+          out(stderr, "Sewage Pump monitor has gone silent\n");
+          // maybe send an email
+        }
+      }
+    }
+
+    clock_nanosleep(CLOCK_MONOTONIC, 0, &ekg_period_ts, NULL);
+  }
+}
+
+
 void sewage_pump_handler(key_value_t *kvp)
 {
   time_t rawtime;
@@ -164,6 +246,19 @@ void sewage_pump_handler(key_value_t *kvp)
   mono_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
   clock_gettime(CLOCK_REALTIME, &ts);
   wall_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+
+  // Whatever this is, we know the egde device is alive, so pulse the heartbeat
+  pthread_mutex_lock(&sewage_heartbeat_lock_m);
+  last_heartbeat_ns = mono_time_ns;
+  pthread_mutex_unlock(&sewage_heartbeat_lock_m);
+
+  for(key_value_t *k = kvp; k; k = k->next) {
+    if (k->key == heartbeat_type) {
+      // This is just a heartbeat
+      free_kvp_list(kvp);
+      return;
+    }
+  }
 
   s = malloc(sizeof(*s));
   if(!s) {
