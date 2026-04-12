@@ -204,8 +204,14 @@ static bool can_send_alert(uint64_t mono_time_ns)
 void* ekg(void *ptr)
 {
   (void)ptr;
+  time_t rawtime;
+  struct tm * timeinfo;
+  char *time_str;
+  int index = 0;
   uint64_t mono_time_ns, last;
   struct timespec ekg_period_ts = {.tv_sec = 1, .tv_nsec = 0};
+  static bool is_dead = false;
+  
 
   while(1) {
     pthread_mutex_lock(&sewage_heartbeat_lock_m);
@@ -218,9 +224,28 @@ void* ekg(void *ptr)
         // The device is dead. Do something.
         if (can_send_alert(mono_time_ns)) {
           // send alert
-          out(stderr, "Sewage Pump monitor has gone silent\n");
+          time(&rawtime);
+          timeinfo = localtime(&rawtime);
+          time_str = asctime(timeinfo);
+          // kill the trailing \n from the stupid date-time string
+          index = 0;
+          while(time_str[index] != '\n') index++;
+          time_str[index] = 0;
+
+          out(stderr, "[%s] Sewage Pump monitor has gone silent\n", time_str);
+          is_dead = true;
           // maybe send an email
         }
+      } else if (is_dead) {
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        time_str = asctime(timeinfo);
+        // kill the trailing \n from the stupid date-time string
+        index = 0;
+        while(time_str[index] != '\n') index++;
+        time_str[index] = 0;
+        out(stdout, "[%s] Sewage Pump monitor has recovered\n", time_str);
+        is_dead = false;
       }
     }
 
