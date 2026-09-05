@@ -43,6 +43,7 @@ extern pthread_mutex_t scheduler_lock_m;
 
 void dispatch(const char *msg, uint32_t length, char *peer_ip_address);
 int innit_scheduler();
+void init_sewage_pump();
 
 // Signal handler to close the port cleanly if we get killed
 void handle_sig(int sig)
@@ -108,8 +109,17 @@ int main ()
 
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-      out(ostream, "Failed to create socket: %s\n", strerror(errno));
-      return 1;
+    out(ostream, "Failed to create socket: %s\n", strerror(errno));
+    return 1;
+  }
+
+  // If you kill the house_controller executable and then try to restart it within 30 seconds or so,
+  // it will often fail with "Address already in use". It's just the kernel being a snotty little
+  // brat. Set the SO_REUSEADDR socket option to prevent this.
+  int yes = 1;
+  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+    out(stderr, "Failed to set socket option SO_REUSEADDR: %s\n", strerror(errno));
+    return 1;
   }
 
   serv_addr.sin_family = AF_INET;
@@ -117,13 +127,13 @@ int main ()
   serv_addr.sin_port = htons(LISTEN_PORT);
 
   if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-      out(stderr, "Failed to bind socket: %s\n", strerror(errno));
-      return 1;
+    out(stderr, "Failed to bind socket: %s\n", strerror(errno));
+    return 1;
   }
 
   if(listen(sockfd, 3) != 0) {
-      out(stderr, "Failed to listen on socket: %s\n", strerror(errno));
-      return 1;
+    out(stderr, "Failed to listen on socket: %s\n", strerror(errno));
+    return 1;
   }
 
   if(pipe(shutdown_pipe) != 0) {
@@ -132,9 +142,11 @@ int main ()
   }
 
   if( (ret = innit_scheduler()) != 0) {
-      out(stderr, "Failed to kick off the scheduler. Something in innit_scheduler() failed. ret = %d\n", ret);
-      return ret;
+    out(stderr, "Failed to kick off the scheduler. Something in innit_scheduler() failed. ret = %d\n", ret);
+    return ret;
   }
+
+  init_sewage_pump();
 
   struct pollfd polls[] =
   {

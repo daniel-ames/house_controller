@@ -26,7 +26,8 @@ typedef enum {
   us_type,
   ms_type,
   seconds_type,
-  string_type
+  string_type,
+  heartbeat_type
 } key_type_e;
 
 typedef struct key_value {
